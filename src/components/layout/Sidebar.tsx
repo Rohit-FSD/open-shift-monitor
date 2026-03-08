@@ -11,11 +11,15 @@ const Sidebar = () => {
 
   return (
 
-    <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
+    <div className="w-64 h-screen bg-slate-900 border-r border-slate-800 flex flex-col">
 
-      <div className="px-6 py-5 text-lg font-semibold">
+      {/* HEADER */}
+
+      <div className="px-6 py-5 text-lg font-semibold text-white">
         OpenShift Monitor
       </div>
+
+      {/* NAVIGATION */}
 
       <div className="flex-1 px-4 space-y-1 text-sm">
 
@@ -33,11 +37,13 @@ const Sidebar = () => {
 
       </div>
 
+      {/* ENVIRONMENT (FIXED AT BOTTOM) */}
+
       <div className="px-4 py-4 border-t border-slate-800 text-xs text-slate-400">
 
         <div className="mb-2">Environment</div>
 
-        <div className="bg-slate-800 rounded px-3 py-2">
+        <div className="bg-slate-800 rounded px-3 py-2 text-white">
           PROD
         </div>
 
@@ -49,11 +55,9 @@ const Sidebar = () => {
 }
 
 interface ItemProps {
-
   icon: React.ReactNode
   label: string
   active?: boolean
-
 }
 
 const SidebarItem = ({ icon, label, active }: ItemProps) => (

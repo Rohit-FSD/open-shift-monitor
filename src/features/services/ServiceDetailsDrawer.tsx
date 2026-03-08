@@ -27,107 +27,137 @@ interface Props {
 
 const ServiceDetailsDrawer = ({ service, onClose }: Props) => {
 
-  const pods: Pod[] = service.pods || []
-
+  const pods: Pod[] = service?.pods || []
   const containers: Container[] = pods[0]?.containers || []
 
   return (
 
-    <div className="fixed right-0 top-0 w-[360px] h-full bg-slate-900 border-l border-slate-700 p-6">
+    <div className="fixed inset-0 z-50 flex justify-end">
 
-      <div className="flex justify-between items-center mb-6">
+      {/* overlay */}
 
-        <h2 className="text-lg font-semibold">View Details</h2>
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+      />
 
-        <button onClick={onClose}>
-          <X size={18} />
-        </button>
+      {/* drawer */}
 
-      </div>
+      <div className="relative w-[360px] h-full bg-slate-900 border-l border-slate-800 p-6 overflow-y-auto">
 
-      <div className="space-y-2 text-sm mb-6">
+        {/* HEADER */}
 
-        <p>
-          <span className="text-slate-400">Service:</span> {service.name}
-        </p>
+        <div className="flex items-center justify-between mb-6">
 
-        <p>
-          <span className="text-slate-400">Namespace:</span> {service.namespace}
-        </p>
+          <h2 className="text-lg font-semibold text-white">
+            View Details
+          </h2>
 
-        <p>
-          <span className="text-slate-400">Replicas:</span>{" "}
-          {service.replicas} Ready: {service.readyReplicas}
-        </p>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white"
+          >
+            <X size={20} />
+          </button>
 
-      </div>
+        </div>
 
-      <div className="mb-6">
+        {/* SERVICE INFO */}
 
-        <h3 className="text-sm font-semibold mb-3 text-slate-300">
-          Containers
-        </h3>
+        <div className="space-y-2 text-sm mb-6">
 
-        {containers.length === 0 && (
-          <p className="text-xs text-slate-400">
-            No containers found
+          <p>
+            <span className="text-slate-400">Service:</span>{" "}
+            {service.name}
           </p>
-        )}
 
-        {containers.map((container: Container, index: number) => {
+          <p>
+            <span className="text-slate-400">Namespace:</span>{" "}
+            {service.namespace}
+          </p>
 
-          const version = container.image?.split(":")[1]
+          <p>
+            <span className="text-slate-400">Replicas:</span>{" "}
+            {service.readyReplicas}/{service.replicas}
+          </p>
 
-          return (
+        </div>
+
+        {/* CONTAINERS */}
+
+        <div className="mb-6">
+
+          <h3 className="text-sm font-semibold mb-3 text-slate-300">
+            Containers
+          </h3>
+
+          {containers.length === 0 && (
+            <p className="text-xs text-slate-400">
+              No containers found
+            </p>
+          )}
+
+          {containers.map((container, index) => {
+
+            const version = container.image?.split(":")[1] || "N/A"
+
+            return (
+
+              <div
+                key={index}
+                className="bg-slate-800 border border-slate-700 p-3 rounded-md flex justify-between mb-2"
+              >
+
+                <span>{container.name}</span>
+
+                <span className="text-green-400">
+                  {version}
+                </span>
+
+              </div>
+
+            )
+
+          })}
+
+        </div>
+
+        {/* PODS */}
+
+        <div>
+
+          <h3 className="text-sm font-semibold mb-3 text-slate-300">
+            Pods
+          </h3>
+
+          {pods.length === 0 && (
+            <p className="text-xs text-slate-400">
+              No pods available
+            </p>
+          )}
+
+          {pods.map((pod, index) => (
 
             <div
               key={index}
-              className="bg-slate-800 border border-slate-700 p-3 rounded-md flex justify-between mb-2"
+              className="bg-slate-800 border border-slate-700 p-3 rounded-md mb-2"
             >
 
-              <span>{container.name}</span>
+              <p>{pod.name}</p>
 
-              <span className="text-green-400">{version}</span>
+              <p className="text-xs text-slate-400">
+                Node: {pod.node}
+              </p>
+
+              <p className="text-xs text-slate-500">
+                Restarts: {pod.restarts || 0}
+              </p>
 
             </div>
 
-          )
-        })}
+          ))}
 
-      </div>
-
-      <div>
-
-        <h3 className="text-sm font-semibold mb-3 text-slate-300">
-          Pods
-        </h3>
-
-        {pods.length === 0 && (
-          <p className="text-xs text-slate-400">
-            No pods available
-          </p>
-        )}
-
-        {pods.map((pod: Pod, index: number) => (
-
-          <div
-            key={index}
-            className="bg-slate-800 border border-slate-700 p-3 rounded-md mb-2"
-          >
-
-            <p>{pod.name}</p>
-
-            <p className="text-xs text-slate-400">
-              Node: {pod.node}
-            </p>
-
-            <p className="text-xs text-slate-500">
-              Restarts: {pod.restarts || 0}
-            </p>
-
-          </div>
-
-        ))}
+        </div>
 
       </div>
 
