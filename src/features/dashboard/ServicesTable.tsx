@@ -48,7 +48,28 @@ const ServicesTable = ({ services }: Props) => {
 
     const parts = image.split(":")
 
-    return parts[1] || "N/A"
+    return parts.length > 1 ? parts[1] : "N/A"
+  }
+
+  const getStatusBorder = (status: string) => {
+
+    switch (status?.toUpperCase()) {
+
+      case "HEALTHY":
+        return "border-l-4 border-green-500"
+
+      case "WARNING":
+        return "border-l-4 border-yellow-500"
+
+      case "CRITICAL":
+      case "BREACH":
+        return "border-l-4 border-red-500"
+
+      default:
+        return "border-l-4 border-gray-600"
+
+    }
+
   }
 
   return (
@@ -56,7 +77,7 @@ const ServicesTable = ({ services }: Props) => {
     <>
       <Card title="Services">
 
-        <table className="w-full">
+        <table className="w-full text-sm">
 
           <thead>
 
@@ -87,32 +108,34 @@ const ServicesTable = ({ services }: Props) => {
 
                 <tr
                   key={index}
-                  className="border-b border-slate-700 hover:bg-slate-800/30 cursor-pointer"
+                  className={`border-b border-slate-700 hover:bg-slate-800/40 transition cursor-pointer ${getStatusBorder(service.status)}`}
                   onClick={() => setSelectedService(service)}
                 >
 
-                  <td className="py-4">
+                  <td className="py-4 font-medium text-slate-200">
                     {service.name}
                   </td>
 
-                  <td>
+                  <td className="text-slate-300">
                     {getVersion(service.image)}
                   </td>
 
-                  <td>
+                  <td className="text-slate-300">
                     {pods}
                   </td>
 
                   <td>
+
                     <span
                       className={
                         uptime === "100%"
-                          ? "text-green-400"
-                          : "text-red-400"
+                          ? "text-green-400 font-medium"
+                          : "text-red-400 font-medium"
                       }
                     >
                       {uptime}
                     </span>
+
                   </td>
 
                   <td>
@@ -138,6 +161,7 @@ const ServicesTable = ({ services }: Props) => {
         />
 
       )}
+
     </>
   )
 }

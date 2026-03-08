@@ -1,42 +1,30 @@
-import useFetch from "../../hooks/useFetch"
 import MetricCard from "../../components/common/MetricCard"
-import Loader from "../../components/common/Loader"
 
-interface OverallSummary {
-  averageUptime: number
-  totalDowntimeFormatted: string
-  totalIncidents: number
-  status: string
+interface Props {
+  slaData: any
 }
 
-interface SLAResponse {
-  overallSummary: OverallSummary
-}
+const ClusterOverview = ({ slaData }: Props) => {
 
-const ClusterOverview = () => {
+  const summary = slaData?.overallSummary
 
-  const { data, loading, error } = useFetch(
-    "http://localhost:8080/api/sla/report/current-week"
-  )
-
-  if (loading)
-    return <Loader text="Loading cluster overview..." />
-
-  if (error)
+  if (!summary)
     return (
-      <div className="text-red-400 py-6">
-        Failed to load cluster overview
-      </div>
-    )
-
-  if (!data?.overallSummary)
-    return (
-      <div className="text-slate-400 py-6">
+      <div className="text-slate-400 py-4">
         No cluster overview data available
       </div>
     )
 
-  const summary: OverallSummary = data.overallSummary
+  const getVariant = () => {
+
+    const status = summary.status?.toUpperCase()
+
+    if (status === "CRITICAL") return "critical"
+
+    if (status === "WARNING") return "warning"
+
+    return "healthy"
+  }
 
   return (
 
@@ -44,30 +32,29 @@ const ClusterOverview = () => {
 
       <MetricCard
         label="Avg Uptime"
-        value={`${summary.averageUptime}%`}
+        value={`${summary.averageUptime ?? 0}%`}
         subText="below SLA"
       />
 
       <MetricCard
         label="Downtime"
-        value={summary.totalDowntimeFormatted}
+        value={summary.totalDowntimeFormatted ?? "0 hrs"}
         subText="this week"
       />
 
       <MetricCard
         label="Incidents"
-        value={summary.totalIncidents}
+        value={summary.totalIncidents ?? 0}
         subText="reported"
       />
 
       <MetricCard
         label="SLA Status"
-        value={summary.status}
-        variant="critical"
+        value={summary.status ?? "UNKNOWN"}
+        variant={getVariant()}
       />
 
     </div>
-
   )
 }
 
