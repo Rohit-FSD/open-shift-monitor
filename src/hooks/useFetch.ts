@@ -9,7 +9,10 @@ const useFetch = (url: string) => {
   useEffect(() => {
 
     const fetchData = async () => {
+
       try {
+
+        setLoading(true)
 
         const response = await fetch(url)
 
@@ -17,9 +20,9 @@ const useFetch = (url: string) => {
           throw new Error("API request failed")
         }
 
-        const result = await response.json()
+        const json = await response.json()
 
-        setData(result)
+        setData(json)
 
       } catch (err) {
 

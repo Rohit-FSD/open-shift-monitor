@@ -1,103 +1,138 @@
 import { X } from "lucide-react"
 
+interface Container {
+  name: string
+  image: string
+}
+
+interface Pod {
+  name: string
+  node: string
+  restarts: number
+  containers: Container[]
+}
+
+interface Service {
+  name: string
+  namespace: string
+  replicas: number
+  readyReplicas: number
+  pods: Pod[]
+}
+
 interface Props {
-  service: any
+  service: Service
   onClose: () => void
 }
 
 const ServiceDetailsDrawer = ({ service, onClose }: Props) => {
-  const pods = service?.pods || []
-  const containers = pods[0]?.containers || []
 
-  if (!service) return null
+  const pods: Pod[] = service.pods || []
+
+  const containers: Container[] = pods[0]?.containers || []
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
 
-      {/* Overlay */}
-      <div
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-      />
+    <div className="fixed right-0 top-0 w-[360px] h-full bg-slate-900 border-l border-slate-700 p-6">
 
-      {/* Drawer */}
-      <div className="relative h-full w-[380px] bg-slate-900 border-l border-slate-700 p-6 shadow-2xl overflow-y-auto">
+      <div className="flex justify-between items-center mb-6">
 
-        {/* Header */}
-        <div className="text-sm text-slate-400">
-          Namespace: {service.namespace}
-        </div>
+        <h2 className="text-lg font-semibold">View Details</h2>
 
-        <div className="text-sm text-slate-400">
-          Replicas: {service.replicas} Ready: {service.readyReplicas}
-        </div>
+        <button onClick={onClose}>
+          <X size={18} />
+        </button>
 
-        {/* Service Info */}
-        <div className="space-y-2 text-sm mb-8">
-          <p>
-            <span className="text-slate-400">Service:</span> {service.service}
+      </div>
+
+      <div className="space-y-2 text-sm mb-6">
+
+        <p>
+          <span className="text-slate-400">Service:</span> {service.name}
+        </p>
+
+        <p>
+          <span className="text-slate-400">Namespace:</span> {service.namespace}
+        </p>
+
+        <p>
+          <span className="text-slate-400">Replicas:</span>{" "}
+          {service.replicas} Ready: {service.readyReplicas}
+        </p>
+
+      </div>
+
+      <div className="mb-6">
+
+        <h3 className="text-sm font-semibold mb-3 text-slate-300">
+          Containers
+        </h3>
+
+        {containers.length === 0 && (
+          <p className="text-xs text-slate-400">
+            No containers found
           </p>
+        )}
 
-          <p>
-            <span className="text-slate-400">Namespace:</span> {service.namespace}
-          </p>
+        {containers.map((container: Container, index: number) => {
 
-          <p>
-            <span className="text-slate-400">Replicas:</span> {service.replicas}
-          </p>
-        </div>
+          const version = container.image?.split(":")[1]
 
-        {/* Containers */}
-        <div className="space-y-2">
-
-          {containers.map((container: any, index: number) => {
-
-            const version = container.image?.split(":")[1] || "N/A"
-
-            return (
-              <div
-                key={index}
-                className="flex justify-between text-sm bg-slate-800/40 px-3 py-2 rounded"
-              >
-                <span>{container.name}</span>
-                <span className="text-green-400">{version}</span>
-              </div>
-            )
-          })}
-
-        </div>
-
-        {/* Pods */}
-        <div className="space-y-3">
-
-          {pods.map((pod: any, index: number) => (
+          return (
 
             <div
               key={index}
-              className="bg-slate-800/40 p-3 rounded"
+              className="bg-slate-800 border border-slate-700 p-3 rounded-md flex justify-between mb-2"
             >
 
-              <div className="flex justify-between text-sm">
-                <span>{pod.name}</span>
-                <span className="text-green-400">{pod.status}</span>
-              </div>
+              <span>{container.name}</span>
 
-              <div className="text-xs text-slate-400 mt-2">
-                Restarts: {pod.restarts || 0}
-              </div>
-
-              <div className="text-xs text-slate-400">
-                Node: {pod.node}
-              </div>
+              <span className="text-green-400">{version}</span>
 
             </div>
 
-          ))}
-
-        </div>
+          )
+        })}
 
       </div>
+
+      <div>
+
+        <h3 className="text-sm font-semibold mb-3 text-slate-300">
+          Pods
+        </h3>
+
+        {pods.length === 0 && (
+          <p className="text-xs text-slate-400">
+            No pods available
+          </p>
+        )}
+
+        {pods.map((pod: Pod, index: number) => (
+
+          <div
+            key={index}
+            className="bg-slate-800 border border-slate-700 p-3 rounded-md mb-2"
+          >
+
+            <p>{pod.name}</p>
+
+            <p className="text-xs text-slate-400">
+              Node: {pod.node}
+            </p>
+
+            <p className="text-xs text-slate-500">
+              Restarts: {pod.restarts || 0}
+            </p>
+
+          </div>
+
+        ))}
+
+      </div>
+
     </div>
+
   )
 }
 

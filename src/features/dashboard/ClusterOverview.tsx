@@ -1,31 +1,69 @@
-import MetricCard from "../../components/common/MetricCard"
 import useFetch from "../../hooks/useFetch"
+import MetricCard from "../../components/common/MetricCard"
+import Loader from "../../components/common/Loader"
+
+interface SLAData {
+  averageUptime: number
+  totalDowntimeFormatted: string
+  totalIncidents: number
+  status: string
+}
 
 const ClusterOverview = () => {
 
   const { data, loading, error } = useFetch(
-    "http://localhost:8080/api/deployments/status"
+    "http://localhost:8080/api/sla/report/current-week"
   )
 
-  if (loading) return <p className="text-slate-400">Loading cluster status...</p>
+  if (loading)
+    return <Loader text="Loading cluster overview..." />
 
   if (error)
-    return <p className="text-red-400">Failed to load cluster data</p>
+    return (
+      <div className="text-red-400 py-6">
+        Failed to load cluster overview
+      </div>
+    )
 
-  const deployments = data || []
+  if (!data)
+    return (
+      <div className="text-slate-400 py-6">
+        No cluster overview data available
+      </div>
+    )
+
+  const slaData = data as SLAData
 
   return (
-    <div className="grid grid-cols-3 gap-4">
 
-      {deployments.map((deployment: any, index: number) => (
-        <MetricCard
-          key={index}
-          label={deployment.name}
-          value={deployment.status}
-        />
-      ))}
+    <div className="grid grid-cols-4 gap-4">
+
+      <MetricCard
+        label="Avg Uptime"
+        value={`${slaData.averageUptime}%`}
+        subText="below SLA"
+      />
+
+      <MetricCard
+        label="Downtime"
+        value={slaData.totalDowntimeFormatted}
+        subText="this week"
+      />
+
+      <MetricCard
+        label="Incidents"
+        value={slaData.totalIncidents}
+        subText="reported"
+      />
+
+      <MetricCard
+        label="SLA Status"
+        value={slaData.status}
+        variant="critical"
+      />
 
     </div>
+
   )
 }
 
