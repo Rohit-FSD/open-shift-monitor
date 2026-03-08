@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 
-const useFetch = (url: string, refreshInterval?: number) => {
+const useFetch = (url: string) => {
 
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -9,6 +9,8 @@ const useFetch = (url: string, refreshInterval?: number) => {
   const fetchData = async () => {
 
     try {
+
+      setLoading(true)
 
       const response = await fetch(url)
 
@@ -36,15 +38,15 @@ const useFetch = (url: string, refreshInterval?: number) => {
 
     fetchData()
 
-    if (!refreshInterval) return
+  }, [url])
 
-    const interval = setInterval(fetchData, refreshInterval)
+  return {
+    data,
+    loading,
+    error,
+    refetch: fetchData
+  }
 
-    return () => clearInterval(interval)
-
-  }, [url, refreshInterval])
-
-  return { data, loading, error }
 }
 
 export default useFetch

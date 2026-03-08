@@ -23,12 +23,15 @@ const ClusterOverview = ({ slaData }: Props) => {
 
     if (status === "WARNING") return "warning"
 
-    return "healthy"
+    if (status === "HEALTHY") return "healthy"
+
+    return "normal"
+
   }
 
   return (
 
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-4 gap-4 mb-6">
 
       <MetricCard
         label="Avg Uptime"
@@ -38,7 +41,7 @@ const ClusterOverview = ({ slaData }: Props) => {
 
       <MetricCard
         label="Downtime"
-        value={summary.totalDowntimeFormatted ?? "0 hrs"}
+        value={summary.totalDowntimeFormatted ?? "0"}
         subText="this week"
       />
 
@@ -55,6 +58,7 @@ const ClusterOverview = ({ slaData }: Props) => {
       />
 
     </div>
+
   )
 }
 

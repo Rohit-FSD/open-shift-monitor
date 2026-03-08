@@ -1,56 +1,58 @@
-import Navbar from "../components/layout/Navbar"
 import Sidebar from "../components/layout/Sidebar"
+import Navbar from "../components/layout/Navbar"
 import ControlBar from "../components/layout/ControlBar"
 
 import ClusterOverview from "../features/dashboard/ClusterOverview"
-import ServicesTable from "../features/dashboard/ServicesTable"
-import SLAMetrics from "../features/dashboard/SLAMetrics"
-import QAImpact from "../features/dashboard/QAImpact"
-import Recommendations from "../features/dashboard/Recommendations"
 
 import useFetch from "../hooks/useFetch"
-import Loader from "../components/common/Loader"
+import ServicesTable from "../features/dashboard/ServicesTable"
+import QAImpact from "../features/dashboard/QAImpact"
+import Recommendations from "../features/dashboard/Recommendations"
+import SLAMetrics from "../features/dashboard/SLAMetrics"
 
 const DashboardPage = () => {
 
   const {
     data: slaData,
-    loading: slaLoading
-  } = useFetch(
-    "http://localhost:8080/api/sla/report/current-week",
-    30000
-  )
-  
+    refetch: refreshSla
+  } = useFetch("http://localhost:8080/api/sla/report/current-week")
+
   const {
     data: servicesData,
-    loading: servicesLoading
-  } = useFetch(
-    "http://localhost:8080/api/deployments/status",
-    30000
-  )
+    refetch: refreshServices
+  } = useFetch("http://localhost:8080/api/deployments/status")
 
-  if (slaLoading || servicesLoading)
-    return <Loader text="Loading dashboard..." />
+  const refreshAll = () => {
+
+    refreshSla()
+
+    refreshServices()
+
+  }
 
   return (
 
-    <div className="flex h-screen bg-slate-950 text-white">
+    <div className="flex h-screen bg-slate-900 text-white">
 
       <Sidebar />
 
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex-1 flex flex-col">
 
         <Navbar />
 
-        <ControlBar />
+        <div className="p-6 max-w-7xl mx-auto w-full">
 
-        <main className="flex-1 overflow-y-auto p-6 space-y-6">
+          <ControlBar onRefresh={refreshAll} />
 
           <ClusterOverview slaData={slaData} />
 
-          <ServicesTable services={servicesData || []} />
+          <div className="mt-6">
 
-          <div className="grid grid-cols-3 gap-6">
+            <ServicesTable services={servicesData || []} />
+
+          </div>
+
+          <div className="grid grid-cols-3 gap-6 mt-6">
 
             <SLAMetrics data={slaData} />
 
@@ -60,12 +62,14 @@ const DashboardPage = () => {
 
           </div>
 
-        </main>
+        </div>
 
       </div>
 
     </div>
+
   )
+
 }
 
 export default DashboardPage

@@ -49,6 +49,7 @@ const ServicesTable = ({ services }: Props) => {
     const parts = image.split(":")
 
     return parts.length > 1 ? parts[1] : "N/A"
+
   }
 
   const getStatusBorder = (status: string) => {
@@ -99,20 +100,29 @@ const ServicesTable = ({ services }: Props) => {
 
               const pods = `${service.readyReplicas}/${service.replicas}`
 
-              const uptime =
-                service.readyReplicas === service.replicas
-                  ? "100%"
-                  : "0%"
+              let uptime = "UNKNOWN"
+
+              if (service.replicas === 0) {
+                uptime = "UNKNOWN"
+              }
+              else if (service.readyReplicas === service.replicas) {
+                uptime = "100%"
+              }
+              else {
+                uptime = "0%"
+              }
 
               return (
 
                 <tr
                   key={index}
-                  className={`border-b border-slate-700 hover:bg-slate-800/40 transition cursor-pointer ${getStatusBorder(service.status)}`}
+                  className="border-b border-slate-700 hover:bg-slate-800/40 transition cursor-pointer"
                   onClick={() => setSelectedService(service)}
                 >
 
-                  <td className="py-4 font-medium text-slate-200">
+                  <td
+                    className={`py-4 pl-4 ${getStatusBorder(service.status)}`}
+                  >
                     {service.name}
                   </td>
 
@@ -130,7 +140,9 @@ const ServicesTable = ({ services }: Props) => {
                       className={
                         uptime === "100%"
                           ? "text-green-400 font-medium"
-                          : "text-red-400 font-medium"
+                          : uptime === "0%"
+                          ? "text-red-400 font-medium"
+                          : "text-gray-400"
                       }
                     >
                       {uptime}
