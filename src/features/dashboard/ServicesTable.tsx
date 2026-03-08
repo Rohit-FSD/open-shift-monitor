@@ -1,13 +1,27 @@
 import Card from "../../components/common/Card"
 import StatusBadge from "../../components/common/StatusBadge"
-import { servicesMock } from "../../api/mock/servicesMock"
 import { useState } from "react"
 import ServiceDetailsDrawer from "../services/ServiceDetailsDrawer"
+import useFetch from "../../hooks/useFetch"
 
 const ServicesTable = () => {
 
-  const services = servicesMock
+  const { data, loading, error } = useFetch(
+    "http://localhost:8080/api/deployments/status"
+  )
+
   const [selectedService, setSelectedService] = useState<any>(null)
+
+  if (loading) return <p>Loading services...</p>
+  if (error) return <p>Failed to load services</p>
+
+  const services = data || []
+
+  const getVersion = (image: string) => {
+    if (!image) return "N/A"
+    const parts = image.split(":")
+    return parts[1] || "N/A"
+  }
 
   return (
     <>
@@ -16,8 +30,8 @@ const ServicesTable = () => {
         <table className="w-full text-left">
 
           <thead>
-            <tr className="text-slate-400 border-b border-slate-700">
-              <th className="py-3">Service</th>
+            <tr>
+              <th>Service</th>
               <th>Version</th>
               <th>Pods</th>
               <th>Uptime</th>
@@ -26,39 +40,20 @@ const ServicesTable = () => {
           </thead>
 
           <tbody>
-
-            {services.map((service, index) => (
+            {services.map((service: any, index: number) => (
               <tr
                 key={index}
                 onClick={() => setSelectedService(service)}
-                className="border-b border-slate-700 hover:bg-slate-800/40 cursor-pointer transition"
               >
-
-                <td
-                  className={`py-4 pl-4 ${
-                    service.sla === "BREACH"
-                      ? "border-l-4 border-red-500 rounded-l"
-                      : "border-l-4 border-transparent"
-                  }`}
-                >
-                  {service.service}
+                <td>{service.name}</td>
+                <td>{getVersion(service.image)}</td>
+                <td>{service.readyReplicas}/{service.replicas}</td>
+                <td>{service.readyReplicas === service.replicas ? "100%" : "0%"}</td>
+                <td>
+                  <StatusBadge status={service.status} />
                 </td>
-
-                <td className="py-4">{service.version}</td>
-
-                <td className="py-4">{service.pods}</td>
-
-                <td className={`py-4 ${service.uptime === "0%" ? "text-red-400 font-semibold" : ""}`}>
-                  {service.uptime}
-                </td>
-
-                <td className="py-4">
-                  <StatusBadge status={service.sla} />
-                </td>
-
               </tr>
             ))}
-
           </tbody>
 
         </table>
@@ -71,7 +66,6 @@ const ServicesTable = () => {
           onClose={() => setSelectedService(null)}
         />
       )}
-
     </>
   )
 }

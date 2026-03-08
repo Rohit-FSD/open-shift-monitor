@@ -6,6 +6,9 @@ interface Props {
 }
 
 const ServiceDetailsDrawer = ({ service, onClose }: Props) => {
+  const pods = service?.pods || []
+  const containers = pods[0]?.containers || []
+
   if (!service) return null
 
   return (
@@ -21,17 +24,12 @@ const ServiceDetailsDrawer = ({ service, onClose }: Props) => {
       <div className="relative h-full w-[380px] bg-slate-900 border-l border-slate-700 p-6 shadow-2xl overflow-y-auto">
 
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-semibold tracking-wide">
-            View Details
-          </h2>
+        <div className="text-sm text-slate-400">
+          Namespace: {service.namespace}
+        </div>
 
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white transition"
-          >
-            <X size={18} />
-          </button>
+        <div className="text-sm text-slate-400">
+          Replicas: {service.replicas} Ready: {service.readyReplicas}
         </div>
 
         {/* Service Info */}
@@ -50,57 +48,52 @@ const ServiceDetailsDrawer = ({ service, onClose }: Props) => {
         </div>
 
         {/* Containers */}
-        <div className="mb-8">
-          <h3 className="text-sm font-semibold mb-3 text-slate-300">
-            Containers
-          </h3>
+        <div className="space-y-2">
 
-          <div className="space-y-2">
-            {service.containers?.map((c: any, i: number) => (
+          {containers.map((container: any, index: number) => {
+
+            const version = container.image?.split(":")[1] || "N/A"
+
+            return (
               <div
-                key={i}
-                className="bg-slate-800 border border-slate-700 p-3 rounded-lg flex justify-between items-center hover:border-slate-500 transition"
+                key={index}
+                className="flex justify-between text-sm bg-slate-800/40 px-3 py-2 rounded"
               >
-                <span>{c.name}</span>
-                <span className="text-slate-400">{c.version}</span>
+                <span>{container.name}</span>
+                <span className="text-green-400">{version}</span>
               </div>
-            ))}
-          </div>
+            )
+          })}
+
         </div>
 
         {/* Pods */}
-        <div>
-          <h3 className="text-sm font-semibold mb-3 text-slate-300">
-            Pods
-          </h3>
+        <div className="space-y-3">
 
-          <div className="space-y-3">
-            {service.podDetails?.length ? (
-              service.podDetails.map((pod: any, i: number) => (
-                <div
-                  key={i}
-                  className="bg-slate-800 border border-slate-700 p-4 rounded-lg space-y-1"
-                >
-                  <p className="font-medium">
-                    <span className="h-2 w-2 bg-green-500 rounded-full inline-block mr-2"></span>
-                    {pod.name}
-                  </p>
+          {pods.map((pod: any, index: number) => (
 
-                  <p className="text-xs text-slate-400">
-                    Node: {pod.node}
-                  </p>
+            <div
+              key={index}
+              className="bg-slate-800/40 p-3 rounded"
+            >
 
-                  <p className="text-xs text-slate-500">
-                    Restarts: {pod.restarts}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-slate-500">
-                No pods running
-              </p>
-            )}
-          </div>
+              <div className="flex justify-between text-sm">
+                <span>{pod.name}</span>
+                <span className="text-green-400">{pod.status}</span>
+              </div>
+
+              <div className="text-xs text-slate-400 mt-2">
+                Restarts: {pod.restarts || 0}
+              </div>
+
+              <div className="text-xs text-slate-400">
+                Node: {pod.node}
+              </div>
+
+            </div>
+
+          ))}
+
         </div>
 
       </div>
