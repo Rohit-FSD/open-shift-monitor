@@ -1,38 +1,46 @@
-import Sidebar from "../components/layout/Sidebar"
-import Navbar from "../components/layout/Navbar"
 import ClusterOverview from "../features/dashboard/ClusterOverview"
 import ServicesTable from "../features/dashboard/ServicesTable"
 import SLAMetrics from "../features/dashboard/SLAMetrics"
 import QAImpact from "../features/dashboard/QAImpact"
 import Recommendations from "../features/dashboard/Recommendations"
-import ControlBar from "../components/layout/ControlBar"
+
+import useFetch from "../hooks/useFetch"
+import Loader from "../components/common/Loader"
 
 const DashboardPage = () => {
 
+  const {
+    data: slaData,
+    loading: slaLoading
+  } = useFetch(
+    "http://localhost:8080/api/sla/report/current-week"
+  )
+
+  const {
+    data: servicesData,
+    loading: servicesLoading
+  } = useFetch(
+    "http://localhost:8080/api/deployments/status"
+  )
+
+  if (slaLoading || servicesLoading)
+    return <Loader text="Loading dashboard..." />
+
   return (
-    <div className="flex">
 
-      <Sidebar />
+    <div className="space-y-6">
 
-      <div className="flex-1">
+      <ClusterOverview slaData={slaData} />
 
-        <Navbar />
+      <ServicesTable services={servicesData || []} />
 
-        <div className="p-10 space-y-10">
+      <div className="grid grid-cols-3 gap-6">
 
-          <ControlBar />
+        <SLAMetrics data={slaData} />
 
-          <ClusterOverview />
+        <QAImpact data={slaData} />
 
-          <ServicesTable />
-
-          <SLAMetrics />
-
-          <QAImpact />
-
-          <Recommendations />
-
-        </div>
+        <Recommendations data={slaData} />
 
       </div>
 

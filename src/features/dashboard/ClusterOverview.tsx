@@ -2,11 +2,15 @@ import useFetch from "../../hooks/useFetch"
 import MetricCard from "../../components/common/MetricCard"
 import Loader from "../../components/common/Loader"
 
-interface SLAData {
+interface OverallSummary {
   averageUptime: number
   totalDowntimeFormatted: string
   totalIncidents: number
   status: string
+}
+
+interface SLAResponse {
+  overallSummary: OverallSummary
 }
 
 const ClusterOverview = () => {
@@ -25,14 +29,14 @@ const ClusterOverview = () => {
       </div>
     )
 
-  if (!data)
+  if (!data?.overallSummary)
     return (
       <div className="text-slate-400 py-6">
         No cluster overview data available
       </div>
     )
 
-  const slaData = data as SLAData
+  const summary: OverallSummary = data.overallSummary
 
   return (
 
@@ -40,25 +44,25 @@ const ClusterOverview = () => {
 
       <MetricCard
         label="Avg Uptime"
-        value={`${slaData.averageUptime}%`}
+        value={`${summary.averageUptime}%`}
         subText="below SLA"
       />
 
       <MetricCard
         label="Downtime"
-        value={slaData.totalDowntimeFormatted}
+        value={summary.totalDowntimeFormatted}
         subText="this week"
       />
 
       <MetricCard
         label="Incidents"
-        value={slaData.totalIncidents}
+        value={summary.totalIncidents}
         subText="reported"
       />
 
       <MetricCard
         label="SLA Status"
-        value={slaData.status}
+        value={summary.status}
         variant="critical"
       />
 

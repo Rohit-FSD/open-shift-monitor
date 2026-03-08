@@ -1,35 +1,47 @@
 import Card from "../../components/common/Card"
-import MetricCard from "../../components/common/MetricCard"
-import { clusterMock } from "../../api/mock/clusterMock"
 
-const QAImpact = () => {
+interface Props {
+  data: any
+}
 
-  const impact = clusterMock.testingImpact
+const QAImpact = ({ data }: Props) => {
+
+  const impact = data?.testingImpact
+
+  if (!impact)
+    return (
+      <Card title="Testing Impact">
+        <p className="text-slate-400 text-sm">
+          No testing impact data
+        </p>
+      </Card>
+    )
 
   return (
-    <Card title="QA Impact">
 
-      <div className="grid grid-cols-4 gap-6">
+    <Card title="Testing Impact">
 
-        <MetricCard
-          label="QA Hours Lost"
-          value={`${impact.totalQAHoursLost} hrs`}
-        />
+      <div className="space-y-3 text-sm">
 
-        <MetricCard
-          label="Tests Failed"
-          value={impact.totalTestsFailed}
-        />
+        <div className="flex justify-between">
+          <span className="text-slate-400">QA Hours Lost</span>
+          <span>{impact.qaHoursLost}</span>
+        </div>
 
-        <MetricCard
-          label="Engineers Impacted"
-          value={impact.totalQAEngineersImpacted}
-        />
+        <div className="flex justify-between">
+          <span className="text-slate-400">Tests Failed</span>
+          <span>{impact.totalTestsFailed}</span>
+        </div>
 
-        <MetricCard
-          label="Cost Impact"
-          value={`$${impact.estimatedCostImpact}`}
-        />
+        <div className="flex justify-between">
+          <span className="text-slate-400">Cost Impact</span>
+          <span>${impact.estimatedCostImpact}</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-slate-400">Engineers Impacted</span>
+          <span>{impact.totalQAEngineersImpacted}</span>
+        </div>
 
       </div>
 

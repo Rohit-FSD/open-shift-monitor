@@ -1,31 +1,35 @@
 import Card from "../../components/common/Card"
-import { clusterMock } from "../../api/mock/clusterMock"
-import { AlertTriangle } from "lucide-react"
 
-const Recommendations = () => {
+interface Props {
+  data: any
+}
 
-  const recommendations = clusterMock.recommendations
+const Recommendations = ({ data }: Props) => {
+
+  const recommendations = data?.recommendations || []
 
   return (
+
     <Card title="Recommendations">
 
-      <div className="space-y-4">
+      {recommendations.length === 0 && (
 
-        {recommendations.map((rec, index) => (
+        <p className="text-slate-400 text-sm">
+          No recommendations available
+        </p>
+
+      )}
+
+      <div className="space-y-3">
+
+        {recommendations.map((rec: string, index: number) => (
 
           <div
             key={index}
-            className="flex items-start gap-3 bg-slate-800/50 p-3 rounded-lg border border-slate-700"
+            className="bg-slate-800 p-3 rounded border border-slate-700 text-sm"
           >
 
-            <AlertTriangle
-              size={18}
-              className="text-yellow-400 mt-1"
-            />
-
-            <p className="text-sm text-slate-300">
-              {rec}
-            </p>
+            ⚠ {rec}
 
           </div>
 

@@ -1,12 +1,21 @@
 import Card from "../../components/common/Card"
 import StatusBadge from "../../components/common/StatusBadge"
-import Loader from "../../components/common/Loader"
-import useFetch from "../../hooks/useFetch"
 import { useState } from "react"
 import ServiceDetailsDrawer from "../services/ServiceDetailsDrawer"
 
-interface Service {
+interface Container {
+  name: string
+  image: string
+}
 
+interface Pod {
+  name: string
+  node: string
+  restarts: number
+  containers: Container[]
+}
+
+interface Service {
   name: string
   image: string
   replicas: number
@@ -14,50 +23,17 @@ interface Service {
   status: string
   namespace: string
   pods: Pod[]
-
 }
 
-interface Pod {
-
-  name: string
-  node: string
-  restarts: number
-  containers: Container[]
-
+interface Props {
+  services: Service[]
 }
 
-interface Container {
-
-  name: string
-  image: string
-
-}
-
-const ServicesTable = () => {
-
-  const { data, loading, error } = useFetch(
-    "http://localhost:8080/api/deployments/status"
-  )
+const ServicesTable = ({ services }: Props) => {
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
 
-  if (loading)
-    return (
-      <Card title="Services">
-        <Loader text="Loading services..." />
-      </Card>
-    )
-
-  if (error)
-    return (
-      <Card title="Services">
-        <div className="text-red-400 py-6">
-          Failed to load services
-        </div>
-      </Card>
-    )
-
-  if (!data || data.length === 0)
+  if (!services || services.length === 0)
     return (
       <Card title="Services">
         <div className="text-slate-400 py-6">
@@ -65,8 +41,6 @@ const ServicesTable = () => {
         </div>
       </Card>
     )
-
-  const services = data as Service[]
 
   const getVersion = (image: string) => {
 
@@ -130,7 +104,15 @@ const ServicesTable = () => {
                   </td>
 
                   <td>
-                    {uptime}
+                    <span
+                      className={
+                        uptime === "100%"
+                          ? "text-green-400"
+                          : "text-red-400"
+                      }
+                    >
+                      {uptime}
+                    </span>
                   </td>
 
                   <td>
