@@ -1,39 +1,32 @@
 import MetricCard from "../../components/common/MetricCard"
-import { clusterMock } from "../../api/mock/clusterMock"
+import useFetch from "../../hooks/useFetch"
 
 const ClusterOverview = () => {
 
-    const data = clusterMock
+  const { data, loading, error } = useFetch(
+    "http://localhost:8080/api/deployments/status"
+  )
 
-    return (
-        <div className="grid grid-cols-4 gap-8">
+  if (loading) return <p className="text-slate-400">Loading cluster status...</p>
 
-            <MetricCard
-                label="Avg Uptime"
-                value="3.64%"
-                severity="critical"
-                subtitle="↓ below SLA"
-            />
+  if (error)
+    return <p className="text-red-400">Failed to load cluster data</p>
 
-            <MetricCard
-                label="Total Downtime"
-                value={data.totalDowntimeFormatted}
-                severity="critical"
-            />
+  const deployments = data || []
 
-            <MetricCard
-                label="Incidents"
-                value={data.totalIncidents}
-            />
+  return (
+    <div className="grid grid-cols-3 gap-4">
 
-            <MetricCard
-                label="SLA Status"
-                value={data.status}
-                severity={data.status === "Critical" ? "critical" : "normal"}
-            />
+      {deployments.map((deployment: any, index: number) => (
+        <MetricCard
+          key={index}
+          label={deployment.name}
+          value={deployment.status}
+        />
+      ))}
 
-        </div>
-    )
+    </div>
+  )
 }
 
 export default ClusterOverview
