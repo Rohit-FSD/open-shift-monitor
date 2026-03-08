@@ -32,7 +32,7 @@ const DashboardPage = () => {
 
   return (
 
-    <div className="flex h-screen bg-slate-900 text-white">
+    <div className="flex min-h-screen bg-slate-950 text-white">
 
       <Sidebar />
 
@@ -40,7 +40,7 @@ const DashboardPage = () => {
 
         <Navbar />
 
-        <div className="p-6 max-w-7xl mx-auto w-full">
+        <div className="p-6 max-w-7xl mx-auto w-full min-h-screen">
 
           <ControlBar onRefresh={refreshAll} />
 

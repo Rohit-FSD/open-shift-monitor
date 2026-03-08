@@ -4,9 +4,9 @@ const Navbar = () => {
 
   return (
 
-    <div className="h-14 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-900">
+    <div className="sticky top-0 z-40 h-14 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-900">
 
-      {/* SEARCH */}
+      {/* LEFT SIDE — SEARCH */}
 
       <div className="relative">
 
@@ -17,7 +17,7 @@ const Navbar = () => {
 
         <input
           placeholder="Search service..."
-          className="bg-slate-800 text-sm pl-9 pr-4 py-2 rounded w-64 outline-none"
+          className="bg-slate-800 text-sm pl-9 pr-4 py-2 rounded w-64 outline-none text-white"
         />
 
       </div>
@@ -25,7 +25,9 @@ const Navbar = () => {
       {/* RIGHT SIDE */}
 
       <div className="text-sm text-slate-400">
+
         Last updated: Just now
+
       </div>
 
     </div>
