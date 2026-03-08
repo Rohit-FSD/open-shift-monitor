@@ -32,7 +32,7 @@ const ControlBar = () => {
       {/* Right Controls */}
       <div className="flex items-center gap-4">
 
-        <button className="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-2 rounded-md hover:bg-slate-700 transition">
+        <button onClick={() => window.location.reload()} className="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-2 rounded-md hover:bg-slate-700 transition">
           <RefreshCw size={16} />
           Refresh
         </button>

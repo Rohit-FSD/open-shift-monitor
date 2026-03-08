@@ -1,43 +1,48 @@
 import { useEffect, useState } from "react"
 
-const useFetch = (url: string) => {
+const useFetch = (url: string, refreshInterval?: number) => {
 
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<any>(null)
 
-  useEffect(() => {
+  const fetchData = async () => {
 
-    const fetchData = async () => {
+    try {
 
-      try {
+      const response = await fetch(url)
 
-        setLoading(true)
-
-        const response = await fetch(url)
-
-        if (!response.ok) {
-          throw new Error("API request failed")
-        }
-
-        const json = await response.json()
-
-        setData(json)
-
-      } catch (err) {
-
-        setError(err)
-
-      } finally {
-
-        setLoading(false)
-
+      if (!response.ok) {
+        throw new Error("API request failed")
       }
+
+      const json = await response.json()
+
+      setData(json)
+
+    } catch (err) {
+
+      setError(err)
+
+    } finally {
+
+      setLoading(false)
+
     }
+
+  }
+
+  useEffect(() => {
 
     fetchData()
 
-  }, [url])
+    if (!refreshInterval) return
+
+    const interval = setInterval(fetchData, refreshInterval)
+
+    return () => clearInterval(interval)
+
+  }, [url, refreshInterval])
 
   return { data, loading, error }
 }

@@ -1,3 +1,7 @@
+import Navbar from "../components/layout/Navbar"
+import Sidebar from "../components/layout/Sidebar"
+import ControlBar from "../components/layout/ControlBar"
+
 import ClusterOverview from "../features/dashboard/ClusterOverview"
 import ServicesTable from "../features/dashboard/ServicesTable"
 import SLAMetrics from "../features/dashboard/SLAMetrics"
@@ -13,14 +17,16 @@ const DashboardPage = () => {
     data: slaData,
     loading: slaLoading
   } = useFetch(
-    "http://localhost:8080/api/sla/report/current-week"
+    "http://localhost:8080/api/sla/report/current-week",
+    30000
   )
-
+  
   const {
     data: servicesData,
     loading: servicesLoading
   } = useFetch(
-    "http://localhost:8080/api/deployments/status"
+    "http://localhost:8080/api/deployments/status",
+    30000
   )
 
   if (slaLoading || servicesLoading)
@@ -28,19 +34,33 @@ const DashboardPage = () => {
 
   return (
 
-    <div className="space-y-6">
+    <div className="flex h-screen bg-slate-950 text-white">
 
-      <ClusterOverview slaData={slaData} />
+      <Sidebar />
 
-      <ServicesTable services={servicesData || []} />
+      <div className="flex flex-col flex-1 overflow-hidden">
 
-      <div className="grid grid-cols-3 gap-6">
+        <Navbar />
 
-        <SLAMetrics data={slaData} />
+        <ControlBar />
 
-        <QAImpact data={slaData} />
+        <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
-        <Recommendations data={slaData} />
+          <ClusterOverview slaData={slaData} />
+
+          <ServicesTable services={servicesData || []} />
+
+          <div className="grid grid-cols-3 gap-6">
+
+            <SLAMetrics data={slaData} />
+
+            <QAImpact data={slaData} />
+
+            <Recommendations data={slaData} />
+
+          </div>
+
+        </main>
 
       </div>
 
