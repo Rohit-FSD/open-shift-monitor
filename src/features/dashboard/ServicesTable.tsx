@@ -1,6 +1,7 @@
 import Card from "../../components/common/Card"
 import StatusBadge from "../../components/common/StatusBadge"
 import { useState } from "react"
+import useLogFailures from "../../hooks/useLogFailures"
 import ServiceDetailsDrawer from "../services/ServiceDetailsDrawer"
 
 interface Container {
@@ -31,7 +32,14 @@ interface Props {
 
 const ServicesTable = ({ services }: Props) => {
 
-  const [selectedService, setSelectedService] = useState<Service | null>(null)
+  const [selectedService, setSelectedService] =
+    useState<Service | null>(null)
+
+  const { data } = useLogFailures()
+
+  const failures = data?.services?.[0]?.failures || []
+
+  const hasFailures = failures.length > 0
 
   if (!services || services.length === 0)
     return (
@@ -48,29 +56,7 @@ const ServicesTable = ({ services }: Props) => {
 
     const parts = image.split(":")
 
-    return parts.length > 1 ? parts[1] : "N/A"
-
-  }
-
-  const getStatusBorder = (status: string) => {
-
-    switch (status?.toUpperCase()) {
-
-      case "HEALTHY":
-        return "border-l-4 border-green-500"
-
-      case "WARNING":
-        return "border-l-4 border-yellow-500"
-
-      case "CRITICAL":
-      case "BREACH":
-        return "border-l-4 border-red-500"
-
-      default:
-        return "border-l-4 border-gray-600"
-
-    }
-
+    return parts[1] || "N/A"
   }
 
   return (
@@ -78,7 +64,7 @@ const ServicesTable = ({ services }: Props) => {
     <>
       <Card title="Services">
 
-        <table className="w-full text-sm">
+        <table className="w-full">
 
           <thead>
 
@@ -98,60 +84,60 @@ const ServicesTable = ({ services }: Props) => {
 
             {services.map((service: Service, index: number) => {
 
-              const pods = `${service.readyReplicas}/${service.replicas}`
+              const pods =
+                `${service.readyReplicas}/${service.replicas}`
 
-              let uptime = "UNKNOWN"
-
-              if (service.replicas === 0) {
-                uptime = "UNKNOWN"
-              }
-              else if (service.readyReplicas === service.replicas) {
-                uptime = "100%"
-              }
-              else {
-                uptime = "0%"
-              }
+              const uptime =
+                service.readyReplicas === service.replicas
+                  ? "100%"
+                  : "0%"
 
               return (
 
                 <tr
                   key={index}
-                  className="border-b border-slate-700 hover:bg-slate-800/40 transition cursor-pointer"
-                  onClick={() => setSelectedService(service)}
+                  className={`border-b border-slate-700 hover:bg-slate-800/30 cursor-pointer ${
+                    hasFailures
+                      ? "bg-red-900/20"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    setSelectedService(service)
+                  }
                 >
 
-                  <td
-                    className={`py-4 pl-4 ${getStatusBorder(service.status)}`}
-                  >
+                  <td className="py-4">
                     {service.name}
                   </td>
 
-                  <td className="text-slate-300">
+                  <td>
                     {getVersion(service.image)}
                   </td>
 
-                  <td className="text-slate-300">
+                  <td>
                     {pods}
                   </td>
 
                   <td>
-
                     <span
                       className={
                         uptime === "100%"
-                          ? "text-green-400 font-medium"
-                          : uptime === "0%"
-                          ? "text-red-400 font-medium"
-                          : "text-gray-400"
+                          ? "text-green-400"
+                          : "text-red-400"
                       }
                     >
                       {uptime}
                     </span>
-
                   </td>
 
                   <td>
-                    <StatusBadge status={service.status} />
+                    <StatusBadge
+                      status={
+                        hasFailures
+                          ? "CRITICAL"
+                          : service.status
+                      }
+                    />
                   </td>
 
                 </tr>
@@ -169,11 +155,12 @@ const ServicesTable = ({ services }: Props) => {
 
         <ServiceDetailsDrawer
           service={selectedService}
-          onClose={() => setSelectedService(null)}
+          onClose={() =>
+            setSelectedService(null)
+          }
         />
 
       )}
-
     </>
   )
 }

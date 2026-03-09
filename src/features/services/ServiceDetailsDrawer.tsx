@@ -1,4 +1,5 @@
 import { X } from "lucide-react"
+import useLogFailures from "../../hooks/useLogFailures"
 
 interface Container {
   name: string
@@ -29,6 +30,9 @@ const ServiceDetailsDrawer = ({ service, onClose }: Props) => {
 
   const pods: Pod[] = service?.pods || []
   const containers: Container[] = pods[0]?.containers || []
+  const { data } = useLogFailures()
+
+  const failures = data?.services?.[0]?.failures || []
 
   return (
 
@@ -151,6 +155,43 @@ const ServiceDetailsDrawer = ({ service, onClose }: Props) => {
 
               <p className="text-xs text-slate-500">
                 Restarts: {pod.restarts || 0}
+              </p>
+
+            </div>
+
+          ))}
+
+        </div>
+
+        <div className="mt-6">
+
+          <h3 className="text-sm font-semibold mb-3 text-slate-300">
+            Log Failures
+          </h3>
+
+          {failures.length === 0 && (
+            <p className="text-xs text-slate-400">
+              No log failures detected
+            </p>
+          )}
+
+          {failures.map((f: any, i: number) => (
+
+            <div
+              key={i}
+              className="bg-slate-800 border border-slate-700 p-3 rounded-md mb-2"
+            >
+
+              <p className="text-red-400 text-xs">
+                {f.httpMethod} {f.endpoint}
+              </p>
+
+              <p className="text-xs text-slate-400">
+                {f.errorType}
+              </p>
+
+              <p className="text-xs text-slate-500">
+                {f.errorMessage?.substring(0, 120)}
               </p>
 
             </div>
