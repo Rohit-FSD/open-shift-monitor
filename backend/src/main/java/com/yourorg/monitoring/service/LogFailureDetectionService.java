@@ -6,6 +6,11 @@ import com.yourorg.monitoring.dto.LogFailureDetectionResponse;
 import com.yourorg.monitoring.dto.PodFailureDetail;
 import com.yourorg.monitoring.dto.ServiceLogStatus;
 import com.yourorg.monitoring.openshift.EnvironmentClientProvider;
+import com.yourorg.monitoring.service.rules.FailureCategory;
+import com.yourorg.monitoring.service.rules.FailureRuleEngine;
+import com.yourorg.monitoring.service.rules.LogBlockExtractor;
+import com.yourorg.monitoring.service.rules.LogFailureProperties;
+import com.yourorg.monitoring.service.rules.MatchedFailure;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerStateTerminated;
 import io.fabric8.kubernetes.api.model.ContainerStateWaiting;
@@ -26,19 +31,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 public class LogFailureDetectionService {
 
   private final EnvironmentClientProvider envProvider;
-
-  private static final int MAX_SAMPLES_PER_CONTAINER = 30;
-  private static final int MAX_LINE_LEN = 800;
-
-  private static final Pattern EXCEPTION_TYPE =
-      Pattern.compile("(NullPointerException|IllegalStateException|IllegalArgumentException|IndexOutOfBoundsException|RuntimeException|Exception)");
+  private final LogFailureProperties props;
+  private final FailureRuleEngine ruleEngine;
+  private final LogBlockExtractor blockExtractor;
 
   public LogFailureDetectionResponse detect(String environment, String serviceName, int tailLines) {
     KubernetesClient client = envProvider.getClient(environment);
@@ -57,27 +58,41 @@ public class LogFailureDetectionService {
 
       for (Container container : pod.getSpec().getContainers()) {
         String log = getPodLog(client, namespace, pod.getMetadata().getName(), container.getName());
-        String tail = getLastLines(log, tailLines);
-        List<String> errorLines = extractErrorLines(tail, MAX_SAMPLES_PER_CONTAINER);
+        String tail = getLastLines(log, tailLines > 0 ? tailLines : props.getTailLines());
 
-        for (String line : errorLines) {
-          String trimmed = normalizeAndTrim(line);
-          Optional<String> exType = extractExceptionType(trimmed);
+        List<String> blocks = blockExtractor.extractErrorBlocks(
+            tail,
+            props.getMaxSamplesPerContainer(),
+            props.getMaxBlockLines()
+        );
 
-          if (exType.isPresent()) {
+        for (String block : blocks) {
+          String message = normalizeAndTrim(block, props.getMaxLineLen());
+          Optional<MatchedFailure> match = ruleEngine.match(message);
+
+          if (match.isPresent() && match.get().getCategory() == FailureCategory.APPLICATION) {
+            String exType = !isBlank(match.get().getExceptionType())
+                ? match.get().getExceptionType()
+                : match.get().getErrorType();
             applicationErrors.add(ApplicationErrorDetail.builder()
-                .exceptionType(exType.get())
-                .message(trimmed)
-                .sampleLogs(Collections.singletonList(trimmed))
+                .exceptionType(exType)
+                .message(message)
+                .sampleLogs(Collections.singletonList(message))
                 .build());
           } else {
+            MatchedFailure mf = match.orElse(MatchedFailure.builder()
+                .category(FailureCategory.UNKNOWN)
+                .errorType("UNKNOWN")
+                .message(message)
+                .build());
+
             failures.add(FailureDetail.builder()
-                .endpoint("Unknown endpoint")
-                .statusCode("")
-                .httpMethod("")
-                .errorType(classifyDownstreamType(trimmed))
-                .errorMessage(trimmed)
-                .sampleLogs(Collections.singletonList(trimmed))
+                .endpoint(isBlank(mf.getEndpoint()) ? "Unknown endpoint" : mf.getEndpoint())
+                .statusCode(isBlank(mf.getStatusCode()) ? "" : mf.getStatusCode())
+                .httpMethod(isBlank(mf.getHttpMethod()) ? "" : mf.getHttpMethod())
+                .errorType(isBlank(mf.getErrorType()) ? "UNKNOWN" : mf.getErrorType())
+                .errorMessage(message)
+                .sampleLogs(Collections.singletonList(message))
                 .build());
           }
         }
@@ -143,58 +158,15 @@ public class LogFailureDetectionService {
     return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
   }
 
-  private List<String> extractErrorLines(String log, int max) {
-    if (log == null || log.isBlank()) return Collections.emptyList();
-    List<String> out = new ArrayList<>();
-    for (String line : log.split("\n")) {
-      if (isErrorLike(line)) {
-        out.add(line);
-        if (out.size() >= max) break;
-      }
-    }
-    return out;
-  }
-
-  private boolean isErrorLike(String line) {
-    if (line == null) return false;
-    String s = line.toLowerCase(Locale.ROOT);
-    return s.contains(" error ")
-        || s.contains("error:")
-        || s.contains("exception")
-        || s.contains("failed")
-        || s.contains("fault")
-        || s.contains("timeout")
-        || s.contains("connection refused")
-        || s.contains("read timed out")
-        || s.contains("internal server error")
-        || s.contains("status=500")
-        || s.contains("status code: 500");
-  }
-
-  private String normalizeAndTrim(String line) {
-    String s = line == null ? "" : line.replaceAll("\\s+", " ").trim();
-    if (s.length() > MAX_LINE_LEN) return s.substring(0, MAX_LINE_LEN) + "...";
+  private String normalizeAndTrim(String text, int maxLen) {
+    if (text == null) return "";
+    String s = text.replaceAll("\\s+", " ").trim();
+    if (maxLen > 0 && s.length() > maxLen) return s.substring(0, maxLen) + "...";
     return s;
   }
 
-  private Optional<String> extractExceptionType(String line) {
-    if (line == null) return Optional.empty();
-    var m = EXCEPTION_TYPE.matcher(line);
-    return m.find() ? Optional.of(m.group(1)) : Optional.empty();
-  }
-
-  private String classifyDownstreamType(String line) {
-    String s = line == null ? "" : line.toLowerCase(Locale.ROOT);
-    if (s.contains("soap") || s.contains("soapfaultexception") || s.contains("faultcode") || s.contains("faultstring")) {
-      return "DOWNSTREAM_SOAP";
-    }
-    if (s.contains("sql") || s.contains("ora-") || s.contains("psqlexception") || s.contains("sqltimeoutexception")) {
-      return "DOWNSTREAM_DB";
-    }
-    if (s.contains("http") || s.contains("status") || s.contains("internal server error") || s.contains("read timed out") || s.contains("connection refused")) {
-      return "DOWNSTREAM_REST";
-    }
-    return "INTERNAL_SERVER_ERROR";
+  private boolean isBlank(String s) {
+    return s == null || s.isBlank();
   }
 
   private List<PodFailureDetail> detectPodFailures(Pod pod) {

@@ -5,3 +5,59 @@ spring:
   application:
     name: open-shift-monitor-backend
 
+monitoring:
+  log-failure:
+    # override via query param if you want; these are safe defaults
+    tailLines: 2000
+    maxSamplesPerContainer: 5
+    maxBlockLines: 25
+    maxLineLen: 800
+    rules:
+      # --- Downstream REST ---
+      - id: REST_TIMEOUT
+        category: DOWNSTREAM
+        errorType: REST_TIMEOUT
+        matchAny: ["read timed out", "connect timed out", "connection refused"]
+        extract:
+          endpointRegex: "(https?://[^\\s\"']+)"
+          methodRegex: "\\b(GET|POST|PUT|DELETE|PATCH)\\b"
+          statusRegex: "\\b(4\\d\\d|5\\d\\d)\\b"
+
+      - id: REST_5XX
+        category: DOWNSTREAM
+        errorType: DOWNSTREAM_5XX
+        matchAny: ["internal server error", "status=500", "status code: 500"]
+        extract:
+          endpointRegex: "(https?://[^\\s\"']+)"
+          methodRegex: "\\b(GET|POST|PUT|DELETE|PATCH)\\b"
+          statusRegex: "\\b(4\\d\\d|5\\d\\d)\\b"
+
+      # --- SOAP ---
+      - id: SOAP_FAULT
+        category: DOWNSTREAM
+        errorType: SOAP_FAULT
+        regexAny: ["SOAPFaultException", "faultcode", "faultstring"]
+        extract:
+          endpointRegex: "(https?://[^\\s\"']+)"
+
+      # --- DB ---
+      - id: DB_ERROR
+        category: DOWNSTREAM
+        errorType: DB_ERROR
+        regexAny: ["SQLTimeoutException", "PSQLException", "SQLException", "ORA-\\d+"]
+
+      # --- Application / JVM ---
+      - id: NPE
+        category: APPLICATION
+        errorType: NullPointerException
+        regexAny: ["NullPointerException"]
+        extract:
+          exceptionRegex: "(NullPointerException)"
+
+      - id: ILLEGAL_STATE
+        category: APPLICATION
+        errorType: IllegalStateException
+        regexAny: ["IllegalStateException"]
+        extract:
+          exceptionRegex: "(IllegalStateException)"
+
