@@ -35,11 +35,8 @@ const ServicesTable = ({ services }: Props) => {
   const [selectedService, setSelectedService] =
     useState<Service | null>(null)
 
-  const { data } = useLogFailures()
-
-  const failures = data?.services?.[0]?.failures || []
-
-  const hasFailures = failures.length > 0
+  // Failures are loaded per-service when the drawer is opened (see ServiceDetailsDrawer)
+  const hasFailures = false
 
   if (!services || services.length === 0)
     return (
