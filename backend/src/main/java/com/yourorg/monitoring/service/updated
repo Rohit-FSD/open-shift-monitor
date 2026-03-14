@@ -201,3 +201,36 @@ EndpointFailure failure = EndpointFailure.builder()
         .errorMessage(rootMessage)
         .sampleLogs(sampleLogs)
         .build();
+
+
+
+
+private String extractDownstreamService(String message, String fullBlock) {
+
+    // 1️⃣ detect URL host
+    Pattern url = Pattern.compile("https?://([a-zA-Z0-9\\-\\.]+)");
+    Matcher m = url.matcher(fullBlock);
+
+    if (m.find()) {
+        String host = m.group(1);
+        return host.split("\\.")[0].toUpperCase();
+    }
+
+    // 2️⃣ detect client/service class names
+    Pattern classPattern = Pattern.compile("(\\w+)(Client|Service|Gateway|Api)");
+    Matcher c = classPattern.matcher(fullBlock);
+
+    if (c.find()) {
+        return c.group(1).toUpperCase();
+    }
+
+    // 3️⃣ detect host-like tokens
+    Pattern hostPattern = Pattern.compile("([a-zA-Z0-9\\-]+)-(service|api|gateway)");
+    Matcher h = hostPattern.matcher(fullBlock);
+
+    if (h.find()) {
+        return h.group(1).toUpperCase();
+    }
+
+    return "EXTERNAL_SERVICE";
+}
