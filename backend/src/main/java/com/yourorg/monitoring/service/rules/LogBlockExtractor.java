@@ -5,9 +5,14 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 @Component
 public class LogBlockExtractor {
+
+  private static final Pattern ERROR_WORD = Pattern.compile("\\berror\\b", Pattern.CASE_INSENSITIVE);
+  private static final Pattern FAILED_WORD = Pattern.compile("\\bfailed\\b", Pattern.CASE_INSENSITIVE);
+  private static final Pattern TIMEOUT_WORD = Pattern.compile("\\btimeout\\b", Pattern.CASE_INSENSITIVE);
 
   public List<String> extractErrorBlocks(String tailLog, int maxBlocks, int maxBlockLines) {
     if (tailLog == null || tailLog.isBlank()) return List.of();
@@ -37,14 +42,19 @@ public class LogBlockExtractor {
   private boolean isErrorLike(String line) {
     if (line == null) return false;
     String s = line.toLowerCase(Locale.ROOT);
-    return s.contains(" error ")
-        || s.contains("error:")
-        || s.contains("exception")
-        || s.contains("failed")
+
+    // Fast-path for common log formats:
+    // - "ERROR ..." (no leading space)
+    // - "[ERROR] ..." / "level=error"
+    if (ERROR_WORD.matcher(s).find()) return true;
+
+    return s.contains("exception")
+        || FAILED_WORD.matcher(s).find()
         || s.contains("fault")
-        || s.contains("timeout")
+        || TIMEOUT_WORD.matcher(s).find()
         || s.contains("connection refused")
         || s.contains("read timed out")
+        || s.contains("connect timed out")
         || s.contains("internal server error")
         || s.contains("status=500")
         || s.contains("status code: 500");

@@ -3,6 +3,8 @@ package com.yourorg.monitoring.service.rules;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -46,6 +48,15 @@ public class FailureRuleEngine {
     String status = firstMatch(ex.getStatusRegex(), text);
     String exceptionType = firstMatch(ex.getExceptionRegex(), text);
 
+    // #region agent log
+    agentLog(
+        "H1",
+        "extract() result",
+        "ruleId=\"" + safe(rule.getId()) + "\",endpoint=\"" + safe(endpoint) + "\",method=\"" + safe(method)
+            + "\",status=\"" + safe(status) + "\",exceptionType=\"" + safe(exceptionType) + "\""
+    );
+    // #endregion
+
     return MatchedFailure.builder()
         .ruleId(rule.getId())
         .category(rule.getCategory())
@@ -66,6 +77,28 @@ public class FailureRuleEngine {
     // Prefer group(1) when present, else whole match
     if (m.groupCount() >= 1 && m.group(1) != null) return m.group(1);
     return m.group();
+  }
+
+  private String safe(String s) {
+    return s == null ? "" : s.replace("\"", "\\\"");
+  }
+
+  private void agentLog(String hypothesisId, String message, String dataFragment) {
+    long ts = System.currentTimeMillis();
+    String json =
+        "{\"sessionId\":\"1d8923\",\"runId\":\"run1\",\"hypothesisId\":\""
+            + hypothesisId
+            + "\",\"location\":\"FailureRuleEngine.java:extract\",\"message\":\""
+            + message.replace("\"", "\\\"")
+            + "\",\"data\":{"
+            + dataFragment
+            + "},\"timestamp\":"
+            + ts
+            + "}\n";
+    try (FileWriter fw = new FileWriter("/Users/rohit/Downloads/open-shift-monitor-ui/.cursor/debug-1d8923.log", true)) {
+      fw.write(json);
+    } catch (IOException ignored) {
+    }
   }
 }
 
