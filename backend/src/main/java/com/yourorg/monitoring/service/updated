@@ -1,0 +1,203 @@
+private List<String> splitIntoLogBlocks(String logs) {
+
+    List<String> blocks = new ArrayList<>();
+
+    if (logs == null || logs.isEmpty()) {
+        return blocks;
+    }
+
+    String[] lines = logs.split("\n");
+    StringBuilder currentBlock = new StringBuilder();
+
+    for (String line : lines) {
+
+        boolean startOfError =
+                line.contains(" ERROR ") ||
+                line.matches(".*\\bException\\b.*") ||
+                line.matches(".*\\bError\\b.*");
+
+        if (startOfError && currentBlock.length() > 0) {
+            blocks.add(currentBlock.toString());
+            currentBlock = new StringBuilder();
+        }
+
+        currentBlock.append(line).append("\n");
+    }
+
+    if (currentBlock.length() > 0) {
+        blocks.add(currentBlock.toString());
+    }
+
+    return blocks;
+}
+
+private List<String> extractSampleLogs(String logBlock) {
+
+    List<String> samples = new ArrayList<>();
+
+    if (logBlock == null) {
+        return samples;
+    }
+
+    String[] lines = logBlock.split("\n");
+
+    for (String line : lines) {
+
+        if (line.contains("ERROR") ||
+            line.contains("Exception") ||
+            line.contains("Caused by")) {
+
+            samples.add(line.trim());
+        }
+
+        if (samples.size() >= 5) {
+            break;
+        }
+    }
+
+    return samples;
+}
+private RootCauseAnalysis analyzeExceptionBlock(String exceptionBlock) {
+
+    String[] lines = exceptionBlock.split("\n");
+
+    if (lines.length == 0) {
+        return null;
+    }
+
+    String exceptionClass = "Unknown";
+    String exceptionMessage = "Unknown error";
+
+    for (String line : lines) {
+
+        if (line.contains("Exception") || line.contains("Error")) {
+
+            String trimmed = line.trim();
+
+            if (trimmed.contains(":")) {
+
+                int colonIndex = trimmed.indexOf(":");
+
+                exceptionClass = trimmed.substring(0, colonIndex).trim();
+                exceptionMessage = trimmed.substring(colonIndex + 1).trim();
+
+            } else {
+                exceptionClass = trimmed;
+                exceptionMessage = trimmed;
+            }
+
+            if (exceptionClass.contains(".")) {
+
+                String[] parts = exceptionClass.split("\\.");
+                exceptionClass = parts[parts.length - 1];
+            }
+
+            break;
+        }
+    }
+
+    FailureCategory category = classifyFailure(exceptionClass, exceptionMessage);
+
+    List<String> stackTrace = new ArrayList<>();
+
+    for (int i = 0; i < Math.min(lines.length, 6); i++) {
+
+        if (lines[i].trim().startsWith("at ")) {
+            stackTrace.add(lines[i].trim());
+        }
+    }
+
+    return RootCauseAnalysis.builder()
+            .rootException(exceptionClass)
+            .rootMessage(exceptionMessage)
+            .category(category)
+            .relevantStackTrace(stackTrace)
+            .build();
+}
+private FailureCategory classifyFailure(String exceptionClass, String message) {
+
+    String combined = (exceptionClass + " " + message).toLowerCase();
+
+    if (combined.contains("sql") || combined.contains("jdbc")) {
+        return FailureCategory.DATABASE;
+    }
+
+    if (combined.contains("socket") ||
+        combined.contains("timeout") ||
+        combined.contains("connection") ||
+        combined.contains("restclient") ||
+        combined.contains("webclient")) {
+
+        return FailureCategory.DOWNSTREAM_DEPENDENCY;
+    }
+
+    if (combined.contains("nullpointer") ||
+        combined.contains("illegalargument") ||
+        combined.contains("csssystem")) {
+
+        return FailureCategory.APPLICATION;
+    }
+
+    return FailureCategory.UNKNOWN;
+}
+private EndpointFailure detectPrimaryFailure(List<EndpointFailure> failures) {
+
+    if (failures == null || failures.isEmpty()) {
+        return null;
+    }
+
+    return failures.stream()
+            .sorted((f1, f2) -> {
+
+                int p1 = getFailurePriority(f1.getCategory());
+                int p2 = getFailurePriority(f2.getCategory());
+
+                return Integer.compare(p1, p2);
+            })
+            .findFirst()
+            .orElse(null);
+}
+private int getFailurePriority(FailureCategory category) {
+
+    if (category == null) return 6;
+
+    switch (category) {
+
+        case APPLICATION:
+            return 1;
+
+        case DATABASE:
+            return 2;
+
+        case DOWNSTREAM_DEPENDENCY:
+            return 3;
+
+        case INFRASTRUCTURE:
+            return 4;
+
+        case FRAMEWORK:
+            return 5;
+
+        default:
+            return 6;
+    }
+}
+EndpointFailure primaryFailure = detectPrimaryFailure(failures);
+
+return ServiceFailure.builder()
+        .service(serviceName)
+        .primaryFailure(primaryFailure)
+        .failures(failures)
+        .healthStatus(determineHealthStatus(failures, podFailures))
+        .build();
+
+        List<String> sampleLogs = extractSampleLogs(logBlock);
+
+EndpointFailure failure = EndpointFailure.builder()
+        .endpoint(endpoint)
+        .statusCode(statusCode)
+        .httpMethod(detectHttpMethod(logBlock))
+        .errorType(category.getDescription())
+        .errorMessage(rootMessage)
+        .sampleLogs(sampleLogs)
+        .build();
