@@ -234,3 +234,23 @@ private String extractDownstreamService(String message, String fullBlock) {
 
     return "EXTERNAL_SERVICE";
 }
+
+for (String logBlock : logBlocks) {
+
+    if (isBackgroundLog(logBlock)) {
+        continue;
+    }
+
+    RootCauseAnalysis analysis = analyzeRootCause(logBlock);
+
+private boolean isBackgroundLog(String block) {
+    String b = block.toLowerCase();
+    // generic scheduler signals
+    return b.contains("scheduled") ||
+           b.contains("scheduling") ||
+           b.contains("cron") ||
+           b.contains("quartz") ||
+           b.contains("timer") ||
+           b.contains("rotation") ||
+           b.contains("housekeeping");
+}
