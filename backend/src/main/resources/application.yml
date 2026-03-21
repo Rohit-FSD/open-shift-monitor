@@ -61,3 +61,79 @@ monitoring:
         extract:
           exceptionRegex: "(IllegalStateException)"
 
+
+
+openshift:
+  environments:
+    QA1:
+      cluster: np1
+      version: v4
+      namespace: 22429
+      systemAccount: SYSTEM_ACCOUNT_1
+
+    QA2:
+      cluster: np1
+      version: v4
+      namespace: 22430
+      systemAccount: SYSTEM_ACCOUNT_1
+
+    QA3:
+      cluster: np1
+      version: v4
+      namespace: 22430
+      systemAccount: SYSTEM_ACCOUNT_1
+
+    QA4:
+      cluster: np1
+      version: v4
+      namespace: 22429
+      systemAccount: SYSTEM_ACCOUNT_1
+
+    QA11:
+      cluster: np3
+      version: v4
+      namespace: 27696
+      systemAccount: SYSTEM_ACCOUNT_2
+
+    QA12:
+      cluster: np3
+      version: v4
+      namespace: 27696
+      systemAccount: SYSTEM_ACCOUNT_2
+
+    QA21:
+      cluster: np3
+      version: v4
+      namespace: 27697
+      systemAccount: SYSTEM_ACCOUNT_2
+
+    QA22:
+      cluster: np3
+      version: v4
+      namespace: 27697
+      systemAccount: SYSTEM_ACCOUNT_2
+
+    QA41:
+      cluster: np5
+      version: v4
+      namespace: 41858
+      systemAccount: SYSTEM_ACCOUNT_3
+
+
+test:
+  apaas:
+    host:
+      v4:
+        np1: https://api.np1-sl.apaas4.barclays.intranet:6443
+        np3: https://api.np3-sl.apaas4.barclays.intranet:6443
+        np5: https://api.np5-sl.apaas4.barclays.intranet:6443
+
+
+apps:
+  name:
+    system:
+      account:
+        password:
+          SYSTEM_ACCOUNT_1: encodedUserPass_np1
+          SYSTEM_ACCOUNT_2: encodedUserPass_np3
+          SYSTEM_ACCOUNT_3: encodedUserPass_np5
