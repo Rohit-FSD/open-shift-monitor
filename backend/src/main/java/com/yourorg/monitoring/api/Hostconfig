@@ -1,0 +1,14 @@
+@Configuration
+@ConfigurationProperties(prefix = "test.apaas.host")
+@Data
+public class HostConfig {
+
+    private Map<String, String> v4;
+
+    public String getHost(String version, String cluster) {
+        if ("v4".equalsIgnoreCase(version)) {
+            return v4.get(cluster);
+        }
+        throw new RuntimeException("Unsupported version: " + version);
+    }
+}
