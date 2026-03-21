@@ -1,0 +1,5 @@
+@Data
+public class Token {
+    private String accessToken;
+    private LocalDateTime expiryTime;
+}
