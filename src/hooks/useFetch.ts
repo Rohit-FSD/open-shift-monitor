@@ -1,24 +1,23 @@
 import { useEffect, useState } from "react"
 
-const useFetch = (url: string) => {
+const useFetch = (url?: string | null) => {
 
   const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<any>(null)
 
   const fetchData = async () => {
+
+    // 🚫 if no url → do nothing
+    if (!url) return
 
     try {
 
       setLoading(true)
 
-      const response = await fetch(url)
+      const res = await fetch(url)
 
-      if (!response.ok) {
-        throw new Error("API request failed")
-      }
-
-      const json = await response.json()
+      const json = await res.json()
 
       setData(json)
 
@@ -31,7 +30,6 @@ const useFetch = (url: string) => {
       setLoading(false)
 
     }
-
   }
 
   useEffect(() => {
@@ -40,12 +38,10 @@ const useFetch = (url: string) => {
 
   }, [url])
 
-  return {
-    data,
-    loading,
-    error,
-    refetch: fetchData
-  }
+  // 🔥 expose refetch
+  const refetch = () => fetchData()
+
+  return { data, loading, error, refetch }
 
 }
 

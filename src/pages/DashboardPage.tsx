@@ -1,32 +1,57 @@
+import { useState } from "react"
+
 import Sidebar from "../components/layout/Sidebar"
 import Navbar from "../components/layout/Navbar"
 import ControlBar from "../components/layout/ControlBar"
 
 import ClusterOverview from "../features/dashboard/ClusterOverview"
-
-import useFetch from "../hooks/useFetch"
 import ServicesTable from "../features/dashboard/ServicesTable"
 import QAImpact from "../features/dashboard/QAImpact"
 import Recommendations from "../features/dashboard/Recommendations"
 import SLAMetrics from "../features/dashboard/SLAMetrics"
 
+import useFetch from "../hooks/useFetch"
+
 const DashboardPage = () => {
+
+  const [env, setEnv] = useState<string>("")
+  const [namespace, setNamespace] = useState<string>("")
+
+  // 🔥 dynamic APIs based on ENV
 
   const {
     data: slaData,
     refetch: refreshSla
-  } = useFetch("http://localhost:8080/api/sla/report/current-week")
+  } = useFetch(
+    env
+      ? `http://localhost:8080/api/sla/report/${env}`
+      : null
+  )
 
   const {
     data: servicesData,
     refetch: refreshServices
-  } = useFetch("http://localhost:8080/api/deployments/status")
+  } = useFetch(
+    env
+      ? `http://localhost:8080/api/deployments/status/env/${env}`
+      : null
+  )
+
+  // 🔁 refresh all
 
   const refreshAll = () => {
 
-    refreshSla()
+    refreshSla && refreshSla()
+    refreshServices && refreshServices()
 
-    refreshServices()
+  }
+
+  // 🎯 handle env change from control bar
+
+  const handleEnvChange = (selectedEnv: string, ns: string) => {
+
+    setEnv(selectedEnv)
+    setNamespace(ns)
 
   }
 
@@ -42,14 +67,15 @@ const DashboardPage = () => {
 
         <div className="p-6 max-w-7xl mx-auto w-full min-h-screen">
 
-          <ControlBar onRefresh={refreshAll} />
+          <ControlBar
+            onRefresh={refreshAll}
+            onEnvChange={handleEnvChange}
+          />
 
           <ClusterOverview slaData={slaData} />
 
           <div className="mt-6">
-
             <ServicesTable services={servicesData || []} />
-
           </div>
 
           <div className="grid grid-cols-3 gap-6 mt-6">
@@ -69,7 +95,6 @@ const DashboardPage = () => {
     </div>
 
   )
-
 }
 
 export default DashboardPage
