@@ -1,38 +1,41 @@
 import { useEffect, useState } from "react"
-import { RefreshCw } from "lucide-react"
+import useFetch from "../../hooks/useFetch"
 
 interface Props {
-  onRefresh?: () => void
+  onRefresh: () => void
 }
 
 const ControlBar = ({ onRefresh }: Props) => {
 
-  const [autoRefresh, setAutoRefresh] = useState(true)
-  const [lastUpdated, setLastUpdated] = useState("Just now")
+  const { data, loading, error } = useFetch(
+    "http://localhost:8080/api/openshift/environments"
+  )
 
-  const handleRefresh = () => {
-
-    if (onRefresh) onRefresh()
-
-    setLastUpdated("Just now")
-
-  }
+  const [selectedEnv, setSelectedEnv] = useState<string>("")
+  const [namespace, setNamespace] = useState<string>("")
 
   useEffect(() => {
 
-    if (!autoRefresh) return
+    if (data && Object.keys(data).length > 0) {
 
-    const interval = setInterval(() => {
+      const firstEnv = Object.keys(data)[0]
 
-      if (onRefresh) onRefresh()
+      setSelectedEnv(firstEnv)
 
-      setLastUpdated("Just now")
+      setNamespace(data[firstEnv]?.namespace || "")
 
-    }, 30000)
+    }
 
-    return () => clearInterval(interval)
+  }, [data])
 
-  }, [autoRefresh])
+  // 🔁 When env changes
+  const handleEnvChange = (env: string) => {
+
+    setSelectedEnv(env)
+
+    setNamespace(data?.[env]?.namespace || "")
+
+  }
 
   return (
 
@@ -40,55 +43,70 @@ const ControlBar = ({ onRefresh }: Props) => {
 
       {/* LEFT SIDE */}
 
-      <div className="flex items-center gap-4">
+      <div className="flex gap-3 items-center">
 
-        <select className="bg-slate-800 px-3 py-2 rounded text-sm">
-          <option>PROD</option>
+        {/* ENV DROPDOWN */}
+
+        <select
+          value={selectedEnv}
+          onChange={(e) => handleEnvChange(e.target.value)}
+          className="bg-slate-800 border border-slate-700 px-3 py-2 rounded-md text-sm"
+        >
+
+          {loading && <option>Loading...</option>}
+
+          {!loading && data &&
+            Object.keys(data).map((env) => (
+
+              <option key={env} value={env}>
+                {env}
+              </option>
+
+            ))}
+
         </select>
 
-        <select className="bg-slate-800 px-3 py-2 rounded text-sm">
-          <option>GA</option>
-        </select>
+        {/* REALM (OPTIONAL if needed later) */}
 
-        <select className="bg-slate-800 px-3 py-2 rounded text-sm">
-          <option>Namespace: 22429</option>
-        </select>
+        <div className="bg-slate-800 border border-slate-700 px-3 py-2 rounded-md text-sm text-slate-300">
+
+          {data?.[selectedEnv]?.realm || "-"}
+
+        </div>
+
+        {/* NAMESPACE → READONLY INPUT ✅ */}
+
+        <input
+          value={namespace}
+          readOnly
+          className="bg-slate-800 border border-slate-700 px-3 py-2 rounded-md text-sm w-[140px] text-slate-300"
+        />
 
       </div>
 
       {/* RIGHT SIDE */}
 
-      <div className="flex items-center gap-4 text-sm">
+      <div className="flex items-center gap-3">
 
         <button
-          onClick={handleRefresh}
-          className="flex items-center gap-2 bg-slate-800 px-3 py-2 rounded hover:bg-slate-700"
+          onClick={onRefresh}
+          className="bg-slate-800 border border-slate-700 px-4 py-2 rounded-md text-sm hover:bg-slate-700"
         >
-          <RefreshCw size={14} />
-          Refresh
+          🔄 Refresh
         </button>
 
-        <div className="flex items-center gap-2">
+        {/* AUTO REFRESH TOGGLE (UI only for now) */}
 
-          <span>Auto Refresh</span>
+        <div className="flex items-center gap-2 text-sm">
 
-          <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`w-10 h-5 rounded-full relative ${
-              autoRefresh ? "bg-green-500" : "bg-gray-500"
-            }`}
-          >
-            <div
-              className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition ${
-                autoRefresh ? "right-0.5" : "left-0.5"
-              }`}
-            />
-          </button>
+          <span className="text-slate-400">Auto Refresh</span>
 
-        </div>
+          <div className="w-10 h-5 bg-green-500 rounded-full relative cursor-pointer">
 
-        <div className="text-slate-400">
-          Last updated: {lastUpdated}
+            <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+
+          </div>
+
         </div>
 
       </div>
@@ -96,7 +114,6 @@ const ControlBar = ({ onRefresh }: Props) => {
     </div>
 
   )
-
 }
 
 export default ControlBar
