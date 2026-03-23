@@ -1,10 +1,10 @@
 import useFetch from "./useFetch"
 
-const useLogFailures = (namespace?: string, service?: string) => {
+const useLogFailures = (env?: string, service?: string) => {
 
   const url =
-    namespace && service
-      ? `http://localhost:8080/api/log-failure-detection/${namespace}/${service}`
+    env && service
+      ? `http://localhost:8080/api/log-failure-detection/${env}/${service}`
       : null
 
   return useFetch(url)

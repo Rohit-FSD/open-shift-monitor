@@ -1,7 +1,6 @@
 import Card from "../../components/common/Card"
 import StatusBadge from "../../components/common/StatusBadge"
 import { useState } from "react"
-import useLogFailures from "../../hooks/useLogFailures"
 import ServiceDetailsDrawer from "../services/ServiceDetailsDrawer"
 
 interface Container {
@@ -28,15 +27,12 @@ interface Service {
 
 interface Props {
   services: Service[]
+  env: string
 }
 
-const ServicesTable = ({ services }: Props) => {
+const ServicesTable = ({ services, env }: Props) => {
 
-  const [selectedService, setSelectedService] =
-    useState<Service | null>(null)
-
-  // Failures are loaded per-service when the drawer is opened (see ServiceDetailsDrawer)
-  const hasFailures = false
+  const [selectedService, setSelectedService] = useState<Service | null>(null)
 
   if (!services || services.length === 0)
     return (
@@ -48,11 +44,8 @@ const ServicesTable = ({ services }: Props) => {
     )
 
   const getVersion = (image: string) => {
-
     if (!image) return "N/A"
-
     const parts = image.split(":")
-
     return parts[1] || "N/A"
   }
 
@@ -64,43 +57,32 @@ const ServicesTable = ({ services }: Props) => {
         <table className="w-full">
 
           <thead>
-
             <tr className="text-slate-400 border-b border-slate-700">
-
               <th className="py-3 text-left">Service</th>
               <th className="text-left">Version</th>
               <th className="text-left">Pods</th>
               <th className="text-left">Uptime</th>
               <th className="text-left">SLA</th>
-
             </tr>
-
           </thead>
 
           <tbody>
 
             {services.map((service: Service, index: number) => {
 
-              const pods =
-                `${service.readyReplicas}/${service.replicas}`
+              const pods = `${service.readyReplicas}/${service.replicas}`
 
               const uptime =
-                service.readyReplicas === service.replicas
-                  ? "100%"
+                service.replicas > 0
+                  ? `${Math.round((service.readyReplicas / service.replicas) * 100)}%`
                   : "0%"
 
               return (
 
                 <tr
                   key={index}
-                  className={`border-b border-slate-700 hover:bg-slate-800/30 cursor-pointer ${
-                    hasFailures
-                      ? "bg-red-900/20"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    setSelectedService(service)
-                  }
+                  className="border-b border-slate-700 hover:bg-slate-800/30 cursor-pointer"
+                  onClick={() => setSelectedService(service)}
                 >
 
                   <td className="py-4">
@@ -128,13 +110,7 @@ const ServicesTable = ({ services }: Props) => {
                   </td>
 
                   <td>
-                    <StatusBadge
-                      status={
-                        hasFailures
-                          ? "CRITICAL"
-                          : service.status
-                      }
-                    />
+                    <StatusBadge status={service.status} />
                   </td>
 
                 </tr>
@@ -152,9 +128,8 @@ const ServicesTable = ({ services }: Props) => {
 
         <ServiceDetailsDrawer
           service={selectedService}
-          onClose={() =>
-            setSelectedService(null)
-          }
+          env={env}   // 🔥 ENV PASSED HERE
+          onClose={() => setSelectedService(null)}
         />
 
       )}

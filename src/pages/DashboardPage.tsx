@@ -75,7 +75,10 @@ const DashboardPage = () => {
           <ClusterOverview slaData={slaData} />
 
           <div className="mt-6">
-            <ServicesTable services={servicesData || []} />
+            <ServicesTable
+              services={servicesData || []}
+              env={env}
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-6 mt-6">
