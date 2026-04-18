@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react"
 
-const useFetch = (url?: string | null) => {
+const useFetch = <T = any>(url?: string | null) => {
 
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<any>(null)
 
