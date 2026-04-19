@@ -103,7 +103,7 @@ public class JourneyLogService {
      * NOTE: this is for the Journey Log Search feature, not success-rate calculation.
      */
     public JourneyLogsResponse getJourneyLogs(String envName, String searchId,
-                                               String serviceName, int timeRangeMinutes) {
+                                               String serviceName, Integer timeRangeMinutes) {
         log.info("{}", "=".repeat(80));
         log.info("JOURNEY LOG SEARCH STARTED");
         log.info("Search ID: {}", searchId);
@@ -201,7 +201,7 @@ public class JourneyLogService {
      * appending all raw log text. Used by both getAllLogsForEnvironment and getServiceLogs.
      */
     private String fetchLogsForPods(List<Pod> pods, KubernetesClient client,
-                                     String namespace, int timeRangeMinutes) {
+                                     String namespace, Integer timeRangeMinutes) {
         StringBuilder allLogs = new StringBuilder();
         for (Pod pod : pods) {
             String podName = pod.getMetadata().getName();
@@ -218,17 +218,19 @@ public class JourneyLogService {
     }
 
     private String fetchContainerLogs(KubernetesClient client, String namespace,
-                                       String podName, String containerName, int timeRangeMinutes) {
+                                       String podName, String containerName, Integer timeRangeMinutes) {
         try {
-            int sinceSeconds = timeRangeMinutes * 60;
-            log.debug("Fetching logs: sinceSeconds={}", sinceSeconds);
+            log.debug("Fetching logs: timeRangeMinutes={}", timeRangeMinutes != null ? timeRangeMinutes : "ALL");
 
-            String logs = client.pods()
+            var podResource = client.pods()
                     .inNamespace(namespace)
                     .withName(podName)
-                    .inContainer(containerName)
-                    .sinceSeconds(sinceSeconds)
-                    .getLog();
+                    .inContainer(containerName);
+
+            // null or 0 = fetch all available logs (no sinceSeconds filter)
+            String logs = (timeRangeMinutes != null && timeRangeMinutes > 0)
+                    ? podResource.sinceSeconds(timeRangeMinutes * 60).getLog()
+                    : podResource.getLog();
 
             if (logs == null) {
                 log.warn("Null logs returned for container: {}", containerName);

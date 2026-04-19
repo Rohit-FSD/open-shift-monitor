@@ -23,14 +23,15 @@ public class JourneyLogController {
 
     private final JourneyLogService journeyLogService;
 
+    // timeRangeMinutes is optional — omit it (or pass 0) to fetch ALL available logs
     @GetMapping("/search")
     public ResponseEntity<JourneyLogsResponse> search(
             @RequestParam String envName,
             @RequestParam String searchId,
             @RequestParam(required = false) String serviceName,
-            @RequestParam(defaultValue = "60") int timeRangeMinutes) {
+            @RequestParam(required = false) Integer timeRangeMinutes) {
         log.info("Journey search: env={} id={} service={} minutes={}",
-                envName, searchId, serviceName, timeRangeMinutes);
+                envName, searchId, serviceName, timeRangeMinutes != null ? timeRangeMinutes : "ALL");
         return ResponseEntity.ok(
                 journeyLogService.getJourneyLogs(envName, searchId, serviceName, timeRangeMinutes));
     }
