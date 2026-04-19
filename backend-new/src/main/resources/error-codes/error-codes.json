@@ -1,0 +1,62 @@
+[
+  {
+    "code": "DEFAULT",
+    "pattern": "",
+    "severity": "LOW",
+    "recommendedSolution": "Review application logs for detailed error information",
+    "description": "Follow these general steps to diagnose the issue",
+    "steps": [
+      "Review application logs for detailed error information",
+      "Check service health and pod status",
+      "Contact support team if issue persists"
+    ]
+  },
+  {
+    "code": "CON_CSS_10023",
+    "pattern": "CON_CSS_10023",
+    "severity": "MEDIUM",
+    "recommendedSolution": "Validate customer account mapping payload",
+    "description": "Customer account mapping failed while processing request",
+    "steps": [
+      "Verify account id is present and well-formed in the request payload",
+      "Check CSS downstream availability",
+      "Review application logs for stack trace"
+    ]
+  },
+  {
+    "code": "OTP_701",
+    "pattern": "\\b701\\b",
+    "severity": "LOW",
+    "recommendedSolution": "User entered invalid OTP — expected behavior unless spike",
+    "description": "OTP validation failed — wrong code",
+    "steps": [
+      "If occurrence is within normal range, no action needed",
+      "If spike observed, check IDV service health",
+      "Correlate with customer complaints"
+    ]
+  },
+  {
+    "code": "OTP_702",
+    "pattern": "\\b702\\b",
+    "severity": "MEDIUM",
+    "recommendedSolution": "Verification context expired — review session TTL config",
+    "description": "Session expired before OTP validation",
+    "steps": [
+      "Check session TTL configuration",
+      "Verify client-side retry window",
+      "Review OTP issuance-to-validation latency"
+    ]
+  },
+  {
+    "code": "OTP_703",
+    "pattern": "\\b703\\b",
+    "severity": "HIGH",
+    "recommendedSolution": "Account locked — investigate brute-force pattern",
+    "description": "TIME_BASED_LOCK triggered",
+    "steps": [
+      "Inspect logs for repeated failures from same customerId",
+      "Validate lock threshold configuration",
+      "Notify fraud team if pattern is suspicious"
+    ]
+  }
+]
