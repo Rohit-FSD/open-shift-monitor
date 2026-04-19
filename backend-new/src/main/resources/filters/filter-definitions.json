@@ -1,0 +1,50 @@
+[
+  {
+    "id": "idv_login_attempts",
+    "name": "Total IDV login attempts",
+    "description": "Total IDV login attempts excluding locked and expired sessions",
+    "category": "ATTEMPT",
+    "expression": {
+      "operator": "AND",
+      "conditions": [
+        { "field": "message", "condition": "CONTAINS", "value": "validateOTP Method called" },
+        { "field": "message", "condition": "NOT_CONTAINS", "value": "TIME_BASED_LOCK" },
+        { "field": "message", "condition": "NOT_CONTAINS", "value": "VERIFICATION_CONTEXT_EXPIRED" }
+      ]
+    },
+    "color": "#009320",
+    "active": true,
+    "priority": 100
+  },
+  {
+    "id": "idv_login_success",
+    "name": "IDV Logins Success",
+    "description": "Successful IDV login",
+    "category": "SUCCESS",
+    "expression": {
+      "operator": "AND",
+      "conditions": [
+        { "field": "message", "condition": "CONTAINS", "value": "OTP validated successfully" }
+      ]
+    },
+    "color": "#22c55e",
+    "active": true,
+    "priority": 90
+  },
+  {
+    "id": "idv_login_failure",
+    "name": "IDV Login Failures",
+    "description": "Any IDV login failure",
+    "category": "FAILURE",
+    "expression": {
+      "operator": "OR",
+      "conditions": [
+        { "field": "message", "condition": "CONTAINS", "value": "OTP validation failed" },
+        { "field": "message", "condition": "REGEX",    "value": "70[0-6]" }
+      ]
+    },
+    "color": "#ef4444",
+    "active": true,
+    "priority": 80
+  }
+]
