@@ -179,7 +179,7 @@ public class JourneyLogService {
                     .environment(envName)
                     .namespace(namespace)
                     .searchedService(serviceName)
-                    .timeRangeMinutes(timeRangeMinutes)
+                    .timeRangeMinutes(timeRangeMinutes != null ? timeRangeMinutes : 0)
                     .totalPodsSearched(pods.size())
                     .totalMatchingLogs(totalMatches)
                     .podLogs(logEntries)
