@@ -12,8 +12,8 @@
     ]
   },
   {
-    "code": "CON_CSS_10023",
-    "pattern": "CON_CSS_10023",
+    "code": "COM_CSS_10023",
+    "pattern": "COM_CSS_10023",
     "severity": "MEDIUM",
     "recommendedSolution": "Validate customer account mapping payload",
     "description": "Customer account mapping failed while processing request",

@@ -267,6 +267,22 @@ public class JourneyLogService {
                     .list()
                     .getItems();
         }
+
+        // Final fallback: match by pod-name prefix (e.g. "bcp-css-service-5f7b9d6867-855sc")
+        // This matches what /api/deployments/status uses.
+        if (pods.isEmpty()) {
+            log.warn("No labeled pods found, falling back to pod-name prefix match for: {}", serviceName);
+            pods = client.pods()
+                    .inNamespace(namespace)
+                    .list()
+                    .getItems()
+                    .stream()
+                    .filter(p -> p.getMetadata() != null
+                            && p.getMetadata().getName() != null
+                            && p.getMetadata().getName().startsWith(serviceName + "-"))
+                    .collect(Collectors.toList());
+        }
+
         log.info("Found {} pods for service: {}", pods.size(), serviceName);
         return pods;
     }

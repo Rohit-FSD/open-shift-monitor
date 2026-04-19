@@ -24,8 +24,10 @@ public class ApplicationErrorDetector {
         Map<String, List<ParsedLogEntry>> grouped = new LinkedHashMap<>();
         Map<String, ErrorCodeMapping> mappingByCode = new HashMap<>();
 
+        // Don't filter by log level — mapped error codes (e.g. COM_CSS_10023) are
+        // sometimes logged at INFO. The error-code regex is specific enough to avoid
+        // false positives on its own.
         for (ParsedLogEntry e : logs) {
-            if (!isErrorLevel(e.getLogLevel())) continue;
             mappings.match(e.getMessage()).ifPresent(m -> {
                 grouped.computeIfAbsent(m.getCode(), k -> new ArrayList<>()).add(e);
                 mappingByCode.putIfAbsent(m.getCode(), m);
