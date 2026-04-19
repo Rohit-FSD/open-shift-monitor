@@ -18,7 +18,7 @@ public class DownstreamFailureDetector {
     private static final LinkedHashMap<Pattern, String> SIGNALS = new LinkedHashMap<>();
     static {
         SIGNALS.put(Pattern.compile("SOAPFaultException|SOAPFault\\b", Pattern.CASE_INSENSITIVE), "SOAP");
-        SIGNALS.put(Pattern.compile("(?:SQLException|JDBCConnectionException|DataAccessException)"), "DB");
+        SIGNALS.put(Pattern.compile("(?:SQLException|SQLRecoverableException|JDBCConnectionException|DataAccessException|\\bORA-\\d{4,5}\\b)"), "DB");
         SIGNALS.put(Pattern.compile("(?:ResourceAccessException|RestClientException|HttpServerErrorException)"), "REST");
         SIGNALS.put(Pattern.compile("\\bstatus=5\\d\\d\\b"), "REST");
         SIGNALS.put(Pattern.compile("(?:Read timed out|Connection refused|SocketTimeoutException|ConnectException)",
@@ -70,7 +70,11 @@ public class DownstreamFailureDetector {
         return null;
     }
 
+    private static final Pattern ORA_CODE = Pattern.compile("\\bORA-(\\d{4,5})\\b");
+
     private String extractDependency(String msg) {
+        Matcher ora = ORA_CODE.matcher(msg);
+        if (ora.find()) return "oracle-db (ORA-" + ora.group(1) + ")";
         Matcher h = HOST.matcher(msg);
         if (h.find()) return h.group(1);
         Matcher s = SERVICE_TOKEN.matcher(msg);
