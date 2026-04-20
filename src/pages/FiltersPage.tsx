@@ -1,7 +1,9 @@
 import { useState } from "react"
+import { Navigate } from "react-router-dom"
 import Sidebar from "../components/layout/Sidebar"
 import Navbar from "../components/layout/Navbar"
 import useFetch from "../hooks/useFetch"
+import { useRole } from "../context/RoleContext"
 
 interface Condition {
   field: string
@@ -32,7 +34,7 @@ interface Filter {
 type CategoryTab = "ALL" | "SUCCESS" | "FAILURE"
 
 const FiltersPage = () => {
-
+  const { isProjectManager } = useRole()
   const [activeTab, setActiveTab] = useState<CategoryTab>("ALL")
   const [activeOnly, setActiveOnly] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -48,6 +50,8 @@ const FiltersPage = () => {
   const { data: filters, loading, error } = useFetch<Filter[]>(buildUrl())
 
   const tabs: CategoryTab[] = ["ALL", "SUCCESS", "FAILURE"]
+
+  if (!isProjectManager) return <Navigate to="/" replace />
 
   return (
 

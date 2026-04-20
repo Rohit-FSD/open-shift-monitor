@@ -5,12 +5,29 @@ import {
   FileSearch,
   Filter,
   TrendingUp,
+  UserCircle,
 } from "lucide-react"
+import { useRole, AppRole } from "../../context/RoleContext"
+
+const ROLE_LABELS: Record<AppRole, string> = {
+  DEVELOPER: "Developer",
+  PROJECT_MANAGER: "Project Manager",
+}
 
 const Sidebar = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { role, setRole, isProjectManager } = useRole()
+
   const at = (path: string) => location.pathname === path
+
+  const handleRoleChange = (newRole: AppRole) => {
+    setRole(newRole)
+    // If switching away from PM and on a PM-only page, redirect to dashboard
+    if (newRole !== "PROJECT_MANAGER" && (location.pathname === "/filters" || location.pathname === "/success-rate")) {
+      navigate("/")
+    }
+  }
 
   return (
     <div className="w-64 h-screen bg-slate-900 border-r border-slate-800 flex flex-col">
@@ -30,19 +47,39 @@ const Sidebar = () => {
         <SidebarItem icon={<FileSearch size={16} />} label="Journey Logs"
           active={at("/journey-logs")} onClick={() => navigate("/journey-logs")} />
 
-        <div className="border-t border-slate-700 my-2" />
+        {isProjectManager && (
+          <>
+            <div className="border-t border-slate-700 my-2" />
 
-        <SidebarItem icon={<Filter size={16} />} label="Filters"
-          active={at("/filters")} onClick={() => navigate("/filters")} />
+            <div className="px-3 py-1 text-[10px] text-slate-500 uppercase tracking-widest">
+              Project Manager
+            </div>
 
-        <SidebarItem icon={<TrendingUp size={16} />} label="Success Rate"
-          active={at("/success-rate")} onClick={() => navigate("/success-rate")} />
+            <SidebarItem icon={<Filter size={16} />} label="Filters"
+              active={at("/filters")} onClick={() => navigate("/filters")} />
+
+            <SidebarItem icon={<TrendingUp size={16} />} label="Success Rate"
+              active={at("/success-rate")} onClick={() => navigate("/success-rate")} />
+          </>
+        )}
 
       </div>
 
-      <div className="px-4 py-4 border-t border-slate-800 text-xs text-slate-400">
-        <div className="mb-2">Environment</div>
-        <div className="bg-slate-800 rounded px-3 py-2 text-white">PROD</div>
+      {/* Role picker */}
+      <div className="px-4 py-4 border-t border-slate-800 space-y-3">
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <UserCircle size={14} />
+          <span>Role</span>
+        </div>
+        <select
+          value={role}
+          onChange={e => handleRoleChange(e.target.value as AppRole)}
+          className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white cursor-pointer"
+        >
+          {(Object.keys(ROLE_LABELS) as AppRole[]).map(r => (
+            <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+          ))}
+        </select>
       </div>
 
     </div>

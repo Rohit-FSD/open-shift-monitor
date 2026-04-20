@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react"
+import { Navigate } from "react-router-dom"
 import Sidebar from "../components/layout/Sidebar"
 import Navbar from "../components/layout/Navbar"
 import useFetch from "../hooks/useFetch"
+import { useRole } from "../context/RoleContext"
 
 interface Filter {
   id: string
@@ -45,6 +47,7 @@ const TIME_RANGES = [
 const API_BASE = "http://localhost:8080/api/deployments"
 
 const SuccessRatePage = () => {
+  const { isProjectManager } = useRole()
   const [selectedEnv, setSelectedEnv] = useState("")
   const [timeRange, setTimeRange] = useState(1440)
   const [totalAttemptsFilterId, setTotalAttemptsFilterId] = useState<string>("")
@@ -115,6 +118,8 @@ const SuccessRatePage = () => {
 
   const rateColor = (rate: number) =>
     rate >= 95 ? "text-green-400" : rate >= 80 ? "text-yellow-400" : "text-red-400"
+
+  if (!isProjectManager) return <Navigate to="/" replace />
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-white">
