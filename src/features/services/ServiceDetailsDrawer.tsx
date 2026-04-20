@@ -46,7 +46,17 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
     }
   }, [env, service?.name, analyze])
 
-  const status = service?.status || data?.healthStatus || "UNKNOWN"
+  const deriveStatus = (): string => {
+    if (!service.replicas || service.readyReplicas === 0) return "DOWN"
+    if (service.readyReplicas < service.replicas) return "DEGRADED"
+    const logFailures = (data?.applicationErrors?.length ?? 0) +
+      (data?.podFailures?.length ?? 0) +
+      (data?.downstreamFailures?.length ?? 0)
+    if (logFailures > 0) return "DEGRADED"
+    return "HEALTHY"
+  }
+
+  const status = deriveStatus()
   const applicationErrors = data?.applicationErrors || []
   const podFailures = data?.podFailures || []
   const downstreamFailures = data?.downstreamFailures || []

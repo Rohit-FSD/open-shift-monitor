@@ -5,7 +5,6 @@ import Navbar from "../components/layout/Navbar"
 import ControlBar from "../components/layout/ControlBar"
 
 import ServicesTable from "../features/dashboard/ServicesTable"
-import SuccessRateCard from "../features/dashboard/SuccessRateCard"
 import ApplicationFailures from "../features/dashboard/ApplicationFailures"
 
 import useFetch from "../hooks/useFetch"
@@ -38,10 +37,6 @@ const DashboardPage = () => {
           <ControlBar onRefresh={refreshAll} onEnvChange={handleEnvChange} />
 
           <ServicesTable services={servicesData || []} env={env} />
-
-          <div className="mt-6">
-            <SuccessRateCard env={env} />
-          </div>
 
           <ApplicationFailures env={env} />
 
