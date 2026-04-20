@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# CSM Vault configuration - copy the csm-vault: block into your
+# application.yml (or use --spring.config.import) and adjust the
+# role + secret paths for your environment.
+# ------------------------------------------------------------
+
+csm-vault:
+  enabled: true
+  base-url: https://csm-uk1-stg.barcapint.com:8200
+  role: apin156370_bcp_bbostest
+  # Projected SA token mounted by the pod spec. Do NOT change
+  # unless the volume mount name differs.
+  jwt-path: /var/run/secrets/tokens/vault-token
+  login-path: /v1/CSM/auth/jwt/login
+
+  # Logical name -> full Vault secret path.
+  # The logical name is what you call in CsmVaultService.getDbCredential("cssqa").
+  db-secrets:
+    cssqa:    /v1/CSM/database2/static-creds/apin156370_cssqa_gcpcssdev
+    # add more DBs here, e.g.:
+    # bbostest: /v1/CSM/database2/static-creds/apin156370_bbostest_gcp
+
+  # Dev-only: paste a JWT here to run the app locally against Vault
+  # without a mounted SA token. Leave blank in deployed environments.
+  dev-jwt: ""
+
+# Required pod spec snippet so jwt-path resolves:
+#
+# spec:
+#   serviceAccountName: bbostest-sa
+#   containers:
+#     - name: app
+#       volumeMounts:
+#         - name: vault-token
+#           mountPath: /var/run/secrets/tokens
+#           readOnly: true
+#   volumes:
+#     - name: vault-token
+#       projected:
+#         sources:
+#           - serviceAccountToken:
+#               path: vault-token
+#               audience: https://csm-uk1-stg.barcapint.com:8200
+#               expirationSeconds: 3600
