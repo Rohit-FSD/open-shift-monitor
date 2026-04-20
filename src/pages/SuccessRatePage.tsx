@@ -54,8 +54,9 @@ const SuccessRatePage = () => {
   const [calculating, setCalculating] = useState(false)
   const [calcError, setCalcError] = useState<string | null>(null)
 
-  const { data: envData } = useFetch("http://localhost:8080/api/openshift/environments")
-  const { data: filters } = useFetch<Filter[]>(`${API_BASE}/filters?activeOnly=true`)
+  const { data: envData } = useFetch<Record<string, any>>("http://localhost:8080/api/openshift/environments")
+  const { data: filtersRaw } = useFetch<Filter[]>(`${API_BASE}/filters?activeOnly=true`)
+  const filters: Filter[] = Array.isArray(filtersRaw) ? filtersRaw : []
 
   useEffect(() => {
     if (envData && !selectedEnv) {
@@ -65,20 +66,20 @@ const SuccessRatePage = () => {
   }, [envData])
 
   useEffect(() => {
-    if (!filters) return
+    if (!filters.length) return
     if (successIds.length === 0)
-      setSuccessIds(filters.filter((f) => f.category === "SUCCESS").map((f) => f.id))
+      setSuccessIds(filters.filter((f: Filter) => f.category === "SUCCESS").map((f: Filter) => f.id))
     if (failureIds.length === 0)
-      setFailureIds(filters.filter((f) => f.category === "FAILURE").map((f) => f.id))
+      setFailureIds(filters.filter((f: Filter) => f.category === "FAILURE").map((f: Filter) => f.id))
     if (!totalAttemptsFilterId) {
-      const attempt = filters.find((f) => f.category === "ATTEMPT")
+      const attempt = filters.find((f: Filter) => f.category === "ATTEMPT")
       if (attempt) setTotalAttemptsFilterId(attempt.id)
     }
   }, [filters])
 
-  const successFilters = (filters || []).filter((f) => f.category === "SUCCESS")
-  const failureFilters = (filters || []).filter((f) => f.category === "FAILURE")
-  const attemptFilters = (filters || []).filter((f) => f.category === "ATTEMPT")
+  const successFilters = filters.filter((f: Filter) => f.category === "SUCCESS")
+  const failureFilters = filters.filter((f: Filter) => f.category === "FAILURE")
+  const attemptFilters = filters.filter((f: Filter) => f.category === "ATTEMPT")
 
   const toggle = (id: string, list: string[], setList: (v: string[]) => void) =>
     setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
@@ -217,7 +218,7 @@ const SuccessRatePage = () => {
                     ))}
                   </>
                 )}
-                {!filters && <div className="text-slate-500 text-sm">Loading filters...</div>}
+                {!filtersRaw && <div className="text-slate-500 text-sm">Loading filters...</div>}
               </Panel>
 
               <button

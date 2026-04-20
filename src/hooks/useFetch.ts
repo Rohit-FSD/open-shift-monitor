@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react"
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const useFetch = <T = any>(url?: string | null) => {
 
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
-  const [error, setError] = useState<any>(null)
+  const [error, setError] = useState<unknown>(null)
 
   const fetchData = async () => {
 

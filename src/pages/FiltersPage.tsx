@@ -109,7 +109,7 @@ const FiltersPage = () => {
             <div className="text-slate-400 py-12 text-center">Loading filters...</div>
           )}
 
-          {error && (
+          {!!error && (
             <div className="text-red-400 py-12 text-center">
               Failed to load filters. Is the backend running on port 8080?
             </div>
