@@ -1,10 +1,8 @@
 import { useNavigate, useLocation } from "react-router-dom"
 import {
   LayoutDashboard,
-  Activity,
-  AlertTriangle,
-  AlertCircle,
   Calendar,
+  FileSearch,
   Filter,
   TrendingUp,
 } from "lucide-react"
@@ -26,17 +24,11 @@ const Sidebar = () => {
         <SidebarItem icon={<LayoutDashboard size={16} />} label="Dashboard"
           active={at("/")} onClick={() => navigate("/")} />
 
-        <SidebarItem icon={<Activity size={16} />} label="QA Impact"
-          active={at("/qa-impact")} onClick={() => navigate("/qa-impact")} />
-
-        <SidebarItem icon={<AlertTriangle size={16} />} label="Alerts"
-          active={at("/alerts")} onClick={() => navigate("/alerts")} />
-
-        <SidebarItem icon={<AlertCircle size={16} />} label="Application Failures"
-          active={at("/failures")} onClick={() => navigate("/failures")} />
-
         <SidebarItem icon={<Calendar size={16} />} label="Environment Bookings"
           active={at("/bookings")} onClick={() => navigate("/bookings")} />
+
+        <SidebarItem icon={<FileSearch size={16} />} label="Journey Logs"
+          active={at("/journey-logs")} onClick={() => navigate("/journey-logs")} />
 
         <div className="border-t border-slate-700 my-2" />
 
