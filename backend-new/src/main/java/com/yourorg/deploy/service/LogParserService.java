@@ -60,6 +60,20 @@ public class LogParserService {
     private static final Pattern CUSTOMER_ID = Pattern.compile("customerId=(\\d+)");
     private static final Pattern ERROR_CODE  = Pattern.compile("(7[0-6]\\d)-?\\w*");
 
+    /**
+     * UUID appearing at the very start of a message body, either bracketed
+     * ("[ef186bb1-…] :: ODSFacade::…") or bare ("38e095c8-… :ConsentFacade ::…").
+     * Used when the logger's [correlationId] bracket is empty because the log
+     * was emitted from an async thread pool that dropped MDC context — the id
+     * is still present in the message prefix. Also captures the per-downstream
+     * call-group id placed by Facade loggers, so the downstream-call parser
+     * can group START / request / response lines even when they hop threads.
+     */
+    private static final Pattern MSG_LEADING_UUID = Pattern.compile(
+            "^\\s*\\[?\\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+          + "[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s*\\]?\\s*(?::|::)"
+    );
+
     public List<ParsedLogEntry> parseLogLines(String rawLogs) {
         if (rawLogs == null || rawLogs.isEmpty()) return List.of();
         List<ParsedLogEntry> out = new ArrayList<>();
@@ -100,15 +114,31 @@ public class LogParserService {
         if (!m.matches()) return null;
         try {
             String msg = m.group("message");
+            String bracketCorrId = emptyToNull(m.group("correlationId"));
+            Map<String, String> derived = extractDerived(msg);
+
+            // When Facade / Client loggers prefix the message with a UUID
+            // (either "[uuid] ::" or "uuid :"), surface it for the downstream
+            // parser via derivedFields.callGroupId, and — if the logger's own
+            // [correlationId] bracket was empty because the line came from an
+            // async thread pool — promote the UUID into correlationId so the
+            // /downstream-calls search matches it exactly (no substring fallback).
+            Matcher um = MSG_LEADING_UUID.matcher(msg);
+            if (um.find()) {
+                String uuid = um.group(1);
+                derived.put("callGroupId", uuid);
+                if (bracketCorrId == null) bracketCorrId = uuid;
+            }
+
             return ParsedLogEntry.builder()
                     .timestamp(LocalDateTime.parse(m.group("timestamp"), TS_FMT_APP))
                     .tid(emptyToNull(m.group("tid")))
                     .thread(m.group("thread"))
                     .logLevel(m.group("level"))
-                    .correlationId(emptyToNull(m.group("correlationId")))
+                    .correlationId(bracketCorrId)
                     .message(msg)
                     .rawLine(line)
-                    .derivedFields(extractDerived(msg))
+                    .derivedFields(derived)
                     .build();
         } catch (Exception e) {
             log.debug("tryAppLog failed: {}", e.getMessage());
