@@ -238,15 +238,16 @@ public class JourneyLogService {
             allCalls.sort(Comparator.comparing(DownstreamApiCall::getRequestTimestamp,
                     Comparator.nullsLast(Comparator.naturalOrder())));
 
-            long successCount  = allCalls.stream().filter(c -> "SUCCESS".equals(c.getCallStatus())).count();
-            long errorCount    = allCalls.stream().filter(c -> c.getCallStatus() != null
-                    && (c.getCallStatus().endsWith("ERROR"))).count();
-            long timeoutCount  = allCalls.stream().filter(c -> "TIMEOUT".equals(c.getCallStatus())
-                    || "CONN_ERROR".equals(c.getCallStatus())).count();
-            long pendingCount  = allCalls.stream().filter(c -> "PENDING".equals(c.getCallStatus())).count();
+            long successCount = allCalls.stream()
+                    .filter(c -> "SUCCESS".equals(c.getCallStatus())).count();
+            // Any non-SUCCESS terminal status counts as an error (CLIENT_ERROR,
+            // SERVER_ERROR, TIMEOUT, CONN_ERROR).
+            long errorCount = allCalls.stream()
+                    .filter(c -> c.getCallStatus() != null
+                            && !"SUCCESS".equals(c.getCallStatus())).count();
 
-            log.info("Downstream extraction done — total={} success={} error={} timeout={} pending={}",
-                    allCalls.size(), successCount, errorCount, timeoutCount, pendingCount);
+            log.info("Downstream extraction done — total={} success={} error={}",
+                    allCalls.size(), successCount, errorCount);
 
             return DownstreamCallsResponse.builder()
                     .searchId(searchId)
@@ -256,8 +257,6 @@ public class JourneyLogService {
                     .totalCalls(allCalls.size())
                     .successCount((int) successCount)
                     .errorCount((int) errorCount)
-                    .timeoutCount((int) timeoutCount)
-                    .pendingCount((int) pendingCount)
                     .calls(allCalls)
                     .timestamp(LocalDateTime.now())
                     .build();

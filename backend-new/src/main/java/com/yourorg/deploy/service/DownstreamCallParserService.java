@@ -2,7 +2,6 @@ package com.yourorg.deploy.service;
 
 import com.yourorg.deploy.model.DownstreamApiCall;
 import com.yourorg.deploy.model.ParsedLogEntry;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -15,27 +14,29 @@ import org.springframework.stereotype.Service;
 /**
  * Extracts structured downstream HTTP/SOAP call records from raw pod logs.
  *
- * Actual log format observed (pipe-delimited, double-pipe before message):
- *   2026-04-18 09:51:53 103|[TID xxx]|http-nio-8081-exec-7|DEBUG|[corrId]||message
+ * Two call styles are supported. In both, we require *evidence* (request XML,
+ * response XML, BEM context, or an explicit HTTP verb + URL) before emitting a
+ * record — a bare "ClassName :: method" line is not enough. This avoids the
+ * noise from internal *ServiceImpl / *Filter / *Util / *Mapper classes.
  *
- * Two call styles are supported:
+ * ── SOAP style (BEM) ──────────────────────────────────────────────────────────
+ *   BEMRequestBuilder :: buildBEMRequestHeader :: ...        (context, buffered)
+ *   SomethingClient :: methodName ::                         (call start)
+ *   Request for XRequest in XML format : <?xml ...>          (body, possibly multi-line)
+ *   Response for XResponse in XML format : <?xml ...>        (DEBUG-only)
  *
- * ── SOAP style (primary) ──────────────────────────────────────────────────────
- *   Request context (BEM header builder lines appear before the client call):
- *     BEMRequestBuilder :: buildBEMRequestHeader :: Selected header build strategy: "STANDARD"
- *     BEMRequestBuilder :: addOsOverrideDetails :: Override Values are [Environment, QAOSE, ODS]
+ * Suffix is restricted to `Client` because every real BEM downstream ends in
+ * Client (IndividualCustomerRelationshipClient, NFAccountManagementClient,
+ * GetCustomerDetailsW3Client, ...). *Service / *Impl / *Handler are internal.
  *
- *   Call start (triggers a new downstream-call record):
- *     StatementAccountReportingClient :: getIndividualCustomerStatementDetails ::
+ * ── REST style ────────────────────────────────────────────────────────────────
+ *   POST http://host/path                                    (inline method+URL)
+ *   HTTP Method : POST   /   uri : https://...               (split across lines)
+ *   ods request method : POST and uri : https://...          (OSSFacade variant)
+ *   Response Status: 200 OK  /  Response received with Status code : 200
  *
- *   Response (closes the current record):
- *     Response for RetrieveIndividualCustomerStatementDetailsResponse in XML format : <?xml ...>
- *
- * ── REST style (fallback for HTTP client debug logs) ─────────────────────────
- *   POST http://downstream-service/api/v1/endpoint
- *   Request body: {...}
- *   Response Status: 200 OK
- *   Response body: {...}
+ * REST calls always carry an explicit HTTP verb + URL so false-positive risk
+ * is low — they're emitted on first sight without needing extra proof.
  */
 @Slf4j
 @Service
@@ -44,81 +45,71 @@ public class DownstreamCallParserService {
 
     private final LogParserService logParserService;
 
+    /** Cap each body at ~32KB to prevent runaway memory on huge SOAP responses. */
+    private static final int MAX_BODY_BYTES = 32 * 1024;
+
     // -------------------------------------------------------------------------
-    // SOAP patterns  (must be checked in order — BEM_DETAIL before SOAP_START)
+    // SOAP patterns
     // -------------------------------------------------------------------------
 
-    /**
-     * BEM (Barclays Enterprise Message) request header builder lines.
-     * These appear BEFORE the actual client call and are buffered as request context.
-     *   BEMRequestBuilder :: buildBEMRequestHeader :: ...
-     *   BEMRequestBuilder :: addOsOverrideDetails :: ...
-     * Must be matched BEFORE SOAP_START to prevent double-matching.
-     */
+    /** BEM request header builder — buffered as "saw BEM context" evidence. */
     private static final Pattern BEM_DETAIL = Pattern.compile(
             "(?i)BEMRequestBuilder\\s*::\\s*(.+)"
     );
 
-    /**
-     * SOAP client method invocation — triggers a new downstream-call record.
-     *   StatementAccountReportingClient :: getIndividualCustomerStatementDetails ::
-     *   SomeServiceAdapter :: fetchData
-     */
+    /** SOAP client call — only *Client suffix (everything else is internal). */
     private static final Pattern SOAP_START = Pattern.compile(
-            "(?i)(\\w+(?:Client|Reporter|Service|Adapter|Gateway|Handler|Caller))\\s*::\\s*(\\w+)"
+            "(?i)(\\w+Client)\\s*::\\s*(\\w+)"
     );
 
-    /**
-     * SOAP/XML request body — either on its own line, or tail of the SOAP_START line.
-     *   Request for RetrieveIndividualCustRelationshipListRequest in XML format : <?xml ...>
-     *   ClientName :: method :: Request for X in XML format : <?xml ...>  (single-line combined)
-     */
+    /** SOAP/XML request body line (standalone or tail of SOAP_START line). */
     private static final Pattern SOAP_REQUEST_XML = Pattern.compile(
             "(?i)request\\s+for\\s+(\\w+)\\s+in\\s+(?:xml|json|soap)\\s+format\\s*:\\s*(.+)"
     );
 
-    /**
-     * SOAP/XML response — closes the current call record.
-     *   Response for RetrieveIndividualCustomerStatementDetailsResponse in XML format : <?xml ...>
-     *   ClientName :: method :: Response for X in XML format : <?xml ...>  (single-line combined)
-     */
+    /** SOAP/XML response body line (DEBUG-only typically). */
     private static final Pattern SOAP_RESPONSE = Pattern.compile(
             "(?i)response\\s+for\\s+(\\w+)\\s+in\\s+(?:xml|json|soap)\\s+format\\s*:\\s*(.+)"
     );
 
+    /** Markers that terminate multi-line XML body capture. */
+    private static final Pattern BODY_TERMINATOR = Pattern.compile(
+            "(?i)(^\\w+Client\\s*::)|(^BEMRequestBuilder\\s*::)|(exiting\\b)|(execution\\s+time)|(^\\s*>>\\s)|(^\\s*<<\\s)"
+    );
+
+    /** Extract the SOAP target URL from request-body XML namespaces. */
+    private static final Pattern XML_NS_URL = Pattern.compile(
+            "xmlns(?::\\w+)?\\s*=\\s*\"(https?://[^\"]+)\""
+    );
+
     // -------------------------------------------------------------------------
-    // REST patterns  (fallback)
+    // REST patterns
     // -------------------------------------------------------------------------
 
-    /** Inline method + URL: "POST http://...", ">>> GET http://...", "HTTP POST http://..." */
+    /** Inline method + URL: "POST http://...", ">>> GET http://...", "HTTP POST http://...". */
     private static final Pattern REQ_INLINE = Pattern.compile(
             "(?i)(?:>>>\\s*|calling\\s*:?\\s*|outbound\\s+|http\\s+)?" +
             "(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(https?://\\S+)"
     );
 
-    /** Split pattern — URI on its own line: "URI: http://..." */
+    /** OSSFacade variant: "ods request method : POST and uri : https://...". */
+    private static final Pattern REQ_OSS = Pattern.compile(
+            "(?i)(?:ods\\s+)?request\\s+method\\s*:?\\s*(GET|POST|PUT|DELETE|PATCH)\\s+and\\s+uri\\s*:?\\s*(https?://\\S+)"
+    );
+
+    /** Split URI on its own line: "URI: http://..." or "url = http://...". */
     private static final Pattern REQ_URI_ONLY = Pattern.compile(
             "(?i)(?:request\\s+)?(?:url|uri)\\s*[=:]\\s*(https?://\\S+)"
     );
 
-    /** Split pattern — Method on its own line (paired with pending URI). */
+    /** Split "Method : POST" / "HTTP Method : POST" on its own line. */
     private static final Pattern REQ_METHOD_ONLY = Pattern.compile(
-            "(?i)method\\s*[=:]\\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)"
+            "(?i)(?:http\\s+)?method\\s*[=:]\\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)"
     );
 
-    /** Request headers line. */
-    private static final Pattern REQ_HEADERS = Pattern.compile(
-            "(?i)request\\s+headers?\\s*[=:]\\s*(.+)"
-    );
-
-    /** Request body line. */
-    private static final Pattern REQ_BODY = Pattern.compile(
-            "(?i)(?:request|req)\\s+body\\s*[=:]\\s*(.+)"
-    );
-
-    /** HTTP response status — various interceptor formats. */
+    /** HTTP response status lines (various interceptor formats). */
     private static final Pattern RESP_STATUS = Pattern.compile(
-            "(?i)(?:response\\s+status\\s*[=:]?\\s*|resp(?:onse)?\\s+|<<<\\s*|status\\s+code\\s*[=:]?\\s*|status[=:]\\s*)(\\d{3})(?:\\s+(.*))?"
+            "(?i)(?:response\\s+status\\s*[=:]?\\s*|resp(?:onse)?\\s+received\\s+with\\s+status\\s+code\\s*[=:]?\\s*|<<<\\s*|status\\s+code\\s*[=:]?\\s*|status[=:]\\s*)(\\d{3})(?:\\s+(.*))?"
     );
 
     /** Spring RestTemplate built-in: "Response 200 OK". */
@@ -126,17 +117,7 @@ public class DownstreamCallParserService {
             "(?i)response\\s+(\\d{3})\\s+(\\S.*)"
     );
 
-    /** Response headers line. */
-    private static final Pattern RESP_HEADERS = Pattern.compile(
-            "(?i)response\\s+headers?\\s*[=:]\\s*(.+)"
-    );
-
-    /** Response body line. */
-    private static final Pattern RESP_BODY = Pattern.compile(
-            "(?i)(?:response|resp)\\s+body\\s*[=:]\\s*(.+)"
-    );
-
-    /** Network-level errors (appear at ERROR/WARN level but belong to the same journey). */
+    /** Network-level errors. */
     private static final Pattern TIMEOUT = Pattern.compile(
             "(?i)SocketTimeoutException|Read timed out|connection timed out|connect timeout"
     );
@@ -161,8 +142,6 @@ public class DownstreamCallParserService {
 
         if (relevant.isEmpty()) return List.of();
 
-        log.debug("Found {} relevant entries for searchId={} pod={}", relevant.size(), searchId, podName);
-
         Map<String, List<ParsedLogEntry>> byThread = relevant.stream()
                 .collect(Collectors.groupingBy(
                         e -> e.getThread() != null ? e.getThread() : "unknown",
@@ -177,7 +156,7 @@ public class DownstreamCallParserService {
             List<ParsedLogEntry> entries = threadGroup.getValue();
             entries.sort(Comparator.comparing(ParsedLogEntry::getTimestamp,
                     Comparator.nullsLast(Comparator.naturalOrder())));
-            calls.addAll(extractCallsFromThread(entries, threadGroup.getKey(), podName, serviceName, searchId));
+            calls.addAll(extractCallsFromThread(entries, podName, serviceName, searchId));
         }
 
         log.info("Extracted {} downstream calls for searchId={} pod={}", calls.size(), searchId, podName);
@@ -189,169 +168,160 @@ public class DownstreamCallParserService {
     // -------------------------------------------------------------------------
 
     private List<DownstreamApiCall> extractCallsFromThread(
-            List<ParsedLogEntry> entries, String thread,
-            String podName, String serviceName, String searchId) {
+            List<ParsedLogEntry> entries, String podName, String serviceName, String searchId) {
 
         List<DownstreamApiCall> result = new ArrayList<>();
         CallState state = null;
         String pendingUri = null;
-        // BEM header lines appear before the SOAP client call — buffer them as request context
-        List<String> bemBuffer = new ArrayList<>();
+        boolean sawBemContext = false;
+        // "soap" or "rest" — SOAP needs proof before emit; REST emits on sight.
+        String lastCaptureMode = null;
 
         for (ParsedLogEntry e : entries) {
             String msg = cleanMessage(e.getMessage());
             if (msg == null || msg.isBlank()) continue;
 
-            // ── 1. BEM request context (buffer, not a call start) ──────────────
-            Matcher bemMatch = BEM_DETAIL.matcher(msg);
-            if (bemMatch.find()) {
-                bemBuffer.add(bemMatch.group(1).trim());
+            // Multi-line body capture — if the current SOAP state is actively
+            // absorbing a request or response body, append until a terminator.
+            if (state != null && state.capturing != CallState.Capture.NONE) {
+                if (!BODY_TERMINATOR.matcher(msg).find() && !isNewCallStart(msg)) {
+                    state.appendBody(msg);
+                    continue;
+                }
+                // Terminator encountered — stop capturing, fall through to reclassify.
+                state.capturing = CallState.Capture.NONE;
+            }
+
+            // ── BEM context (buffered as evidence, not a call start) ──────────
+            if (BEM_DETAIL.matcher(msg).find()) {
+                sawBemContext = true;
                 continue;
             }
 
-            // ── 2. SOAP client method invocation (call start) ──────────────────
+            // ── SOAP client method invocation ─────────────────────────────────
             Matcher soapMatch = SOAP_START.matcher(msg);
             if (soapMatch.find()) {
-                closePreviousCall(state, result, e.getTimestamp());
-                String endpoint = "soap:" + soapMatch.group(1) + "::" + soapMatch.group(2);
-                state = new CallState(podName, serviceName, thread, searchId,
-                        e.getTimestamp(), "SOAP", endpoint);
-                if (!bemBuffer.isEmpty()) {
-                    state.requestHeaders = String.join("\n", bemBuffer);
-                }
-                bemBuffer.clear();
+                emitIfProven(state, result);
+                state = new CallState(podName, serviceName, searchId,
+                        e.getTimestamp(), "SOAP",
+                        "soap:" + soapMatch.group(1) + "::" + soapMatch.group(2));
+                state.sawBemContext = sawBemContext;
+                sawBemContext = false;
+                lastCaptureMode = "soap";
 
                 // Same line may also carry "Request for X in XML format : <body>"
-                // (single-line pattern: ClientName :: method :: Request for X ...)
                 Matcher inlineReq = SOAP_REQUEST_XML.matcher(msg);
                 if (inlineReq.find()) {
-                    state.requestBody = inlineReq.group(2);
+                    state.requestBody = clip(inlineReq.group(2));
+                    state.capturing = CallState.Capture.REQUEST;
+                    state.sawEvidence = true;
                 }
-
                 // Same line may also carry "Response for X in XML format : <body>"
-                // (single-line pattern: ClientName :: method :: Response for X ...)
                 Matcher inlineResp = SOAP_RESPONSE.matcher(msg);
                 if (inlineResp.find()) {
-                    state.responseBody = inlineResp.group(2);
-                    state.responseStatusText = inlineResp.group(1);
-                    state.responseTimestamp = e.getTimestamp();
-                    state.inResponse = true;
-                    state.forcedStatus = deriveSoapStatus(inlineResp.group(2));
-                    result.add(state.build());
-                    state = null;
+                    state.responseBody = clip(inlineResp.group(2));
+                    state.capturing = CallState.Capture.RESPONSE;
+                    state.sawEvidence = true;
+                    state.forcedStatus = deriveSoapStatus(state.responseBody);
                 }
                 continue;
             }
 
-            // ── 2b. Standalone "Request for X in XML format : <body>" line ─────
-            //    (for the two-line pattern where request XML is on its own line)
-            if (state != null && !state.inResponse) {
+            // ── Standalone "Request for X ..." (two-line SOAP pattern) ────────
+            if (state != null && "soap".equals(lastCaptureMode)) {
                 Matcher reqXml = SOAP_REQUEST_XML.matcher(msg);
                 if (reqXml.find()) {
-                    state.requestBody = reqXml.group(2);
+                    state.requestBody = clip(reqXml.group(2));
+                    state.capturing = CallState.Capture.REQUEST;
+                    state.sawEvidence = true;
+                    continue;
+                }
+                Matcher respXml = SOAP_RESPONSE.matcher(msg);
+                if (respXml.find()) {
+                    state.responseBody = clip(respXml.group(2));
+                    state.capturing = CallState.Capture.RESPONSE;
+                    state.sawEvidence = true;
+                    state.forcedStatus = deriveSoapStatus(state.responseBody);
                     continue;
                 }
             }
 
-            // ── 3. REST inline method + URL (call start) ───────────────────────
-            Matcher inline = REQ_INLINE.matcher(msg);
-            if (inline.find()) {
-                closePreviousCall(state, result, e.getTimestamp());
-                bemBuffer.clear();
-                state = new CallState(podName, serviceName, thread, searchId,
-                        e.getTimestamp(), inline.group(1).toUpperCase(), inline.group(2));
+            // ── REST: OSSFacade-style combined line ───────────────────────────
+            Matcher oss = REQ_OSS.matcher(msg);
+            if (oss.find()) {
+                emitIfProven(state, result);
+                state = new CallState(podName, serviceName, searchId,
+                        e.getTimestamp(), oss.group(1).toUpperCase(), oss.group(2));
+                state.sawEvidence = true;
+                lastCaptureMode = "rest";
                 pendingUri = null;
                 continue;
             }
 
-            // ── 4. REST split URI ──────────────────────────────────────────────
+            // ── REST: inline method + URL ─────────────────────────────────────
+            Matcher inline = REQ_INLINE.matcher(msg);
+            if (inline.find()) {
+                emitIfProven(state, result);
+                state = new CallState(podName, serviceName, searchId,
+                        e.getTimestamp(), inline.group(1).toUpperCase(), inline.group(2));
+                state.sawEvidence = true;
+                lastCaptureMode = "rest";
+                pendingUri = null;
+                continue;
+            }
+
+            // ── REST: split "url : http://..." (pending until method arrives) ─
             Matcher uriOnly = REQ_URI_ONLY.matcher(msg);
             if (uriOnly.find()) {
                 pendingUri = uriOnly.group(1);
                 continue;
             }
 
-            // ── 5. REST split Method (pairs with pending URI) ──────────────────
+            // ── REST: split "method : POST" (pairs with pending URI) ──────────
             Matcher methodOnly = REQ_METHOD_ONLY.matcher(msg);
             if (methodOnly.find() && pendingUri != null) {
-                closePreviousCall(state, result, e.getTimestamp());
-                bemBuffer.clear();
-                state = new CallState(podName, serviceName, thread, searchId,
+                emitIfProven(state, result);
+                state = new CallState(podName, serviceName, searchId,
                         e.getTimestamp(), methodOnly.group(1).toUpperCase(), pendingUri);
+                state.sawEvidence = true;
+                lastCaptureMode = "rest";
                 pendingUri = null;
                 continue;
             }
 
-            // No active call — skip detail lines
             if (state == null) continue;
 
-            // ── 6. SOAP response (closes the current call) ─────────────────────
-            Matcher soapResp = SOAP_RESPONSE.matcher(msg);
-            if (soapResp.find()) {
-                state.responseBody = soapResp.group(2);
-                state.responseStatusText = soapResp.group(1);  // e.g. "RetrieveIndividualCustomerStatementDetailsResponse"
-                state.responseTimestamp = e.getTimestamp();
-                state.inResponse = true;
-                state.forcedStatus = deriveSoapStatus(soapResp.group(2));
-                result.add(state.build());
-                state = null;
-                continue;
-            }
-
-            // ── 7. REST response status ────────────────────────────────────────
+            // ── REST response status ──────────────────────────────────────────
             Matcher respSt = RESP_STATUS.matcher(msg);
             if (respSt.find()) {
-                state.responseStatus = Integer.parseInt(respSt.group(1));
-                state.responseStatusText = respSt.group(2) != null ? respSt.group(2).trim() : "";
-                state.responseTimestamp = e.getTimestamp();
-                state.inResponse = true;
+                int code = Integer.parseInt(respSt.group(1));
+                state.forcedStatus = code < 400 ? "SUCCESS"
+                        : code < 500 ? "CLIENT_ERROR" : "SERVER_ERROR";
                 continue;
             }
             Matcher respSp = RESP_SPRING.matcher(msg);
             if (respSp.find()) {
-                state.responseStatus = Integer.parseInt(respSp.group(1));
-                state.responseStatusText = respSp.group(2).trim();
-                state.responseTimestamp = e.getTimestamp();
-                state.inResponse = true;
+                int code = Integer.parseInt(respSp.group(1));
+                state.forcedStatus = code < 400 ? "SUCCESS"
+                        : code < 500 ? "CLIENT_ERROR" : "SERVER_ERROR";
                 continue;
             }
 
-            // ── 8. Response body ───────────────────────────────────────────────
-            Matcher respBody = RESP_BODY.matcher(msg);
-            if (respBody.find()) {
-                state.responseBody = respBody.group(1);
-                continue;
-            }
-
-            // ── 9. Response headers ────────────────────────────────────────────
-            Matcher respHdr = RESP_HEADERS.matcher(msg);
-            if (respHdr.find()) {
-                state.responseHeaders = respHdr.group(1);
-                continue;
-            }
-
-            // ── 10. Request body / headers (only before response phase) ────────
-            if (!state.inResponse) {
-                Matcher reqBody = REQ_BODY.matcher(msg);
-                if (reqBody.find()) { state.requestBody = reqBody.group(1); continue; }
-
-                Matcher reqHdr = REQ_HEADERS.matcher(msg);
-                if (reqHdr.find()) { state.requestHeaders = reqHdr.group(1); continue; }
-            }
-
-            // ── 11. Network errors ─────────────────────────────────────────────
+            // ── Network errors ────────────────────────────────────────────────
             if (TIMEOUT.matcher(msg).find()) {
                 state.forcedStatus = "TIMEOUT";
-                result.add(state.build());
+                state.sawEvidence = true;
+                emitIfProven(state, result);
                 state = null;
             } else if (CONN_ERROR.matcher(msg).find()) {
                 state.forcedStatus = "CONN_ERROR";
-                result.add(state.build());
+                state.sawEvidence = true;
+                emitIfProven(state, result);
                 state = null;
             }
         }
 
-        if (state != null) result.add(state.build());
+        emitIfProven(state, result);
         return result;
     }
 
@@ -359,26 +329,20 @@ public class DownstreamCallParserService {
     // Helpers
     // -------------------------------------------------------------------------
 
-    /**
-     * Close the in-progress call and emit it. When no explicit response was
-     * captured (INFO-only logs), fall back to the next call's start timestamp
-     * as an approximate completion time so the waterfall view still gets a
-     * duration. Once DEBUG is enabled and real Response lines appear, the
-     * real responseTimestamp is used instead.
-     */
-    private void closePreviousCall(CallState state, List<DownstreamApiCall> result, LocalDateTime approxEndTime) {
+    private boolean isNewCallStart(String msg) {
+        return SOAP_START.matcher(msg).find()
+                || REQ_INLINE.matcher(msg).find()
+                || REQ_OSS.matcher(msg).find();
+    }
+
+    /** Emit the call only if we have evidence it's a real external hop. */
+    private void emitIfProven(CallState state, List<DownstreamApiCall> result) {
         if (state == null) return;
-        if (state.responseTimestamp == null && approxEndTime != null) {
-            state.responseTimestamp = approxEndTime;
-        }
+        if (!state.sawEvidence && !state.sawBemContext) return;
         result.add(state.build());
     }
 
-    /**
-     * The pipe-delimited log format uses a double-pipe before the message:
-     *   ...|[corrId]||actual message
-     * so the parsed message field starts with "|". Strip all leading pipes.
-     */
+    /** Pipe-delimited log format uses a double-pipe before the message. */
     private String cleanMessage(String msg) {
         if (msg == null) return null;
         String s = msg.trim();
@@ -386,12 +350,29 @@ public class DownstreamCallParserService {
         return s;
     }
 
+    private String clip(String s) {
+        if (s == null) return null;
+        return s.length() > MAX_BODY_BYTES ? s.substring(0, MAX_BODY_BYTES) : s;
+    }
+
     /** Infer SOAP call success from response XML content. */
     private String deriveSoapStatus(String body) {
-        if (body == null) return "PENDING";
+        if (body == null) return "SUCCESS";
         String u = body.toUpperCase();
         if (u.contains("FAULT") || u.contains("<FAILURE>") || u.contains("<FAILED>")) return "SERVER_ERROR";
         return "SUCCESS";
+    }
+
+    /** Extract the first `xmlns...="http..."` namespace URL from a SOAP body. */
+    private static String extractSoapUrl(String body) {
+        if (body == null) return null;
+        Matcher m = XML_NS_URL.matcher(body);
+        while (m.find()) {
+            String url = m.group(1);
+            // Skip XMLSchema / W3 boilerplate — we want the service namespace.
+            if (!url.contains("w3.org") && !url.contains("xmlsoap.org")) return url;
+        }
+        return null;
     }
 
     private boolean matchesSearchId(ParsedLogEntry e, String searchId) {
@@ -412,73 +393,77 @@ public class DownstreamCallParserService {
     }
 
     // -------------------------------------------------------------------------
-    // Mutable call-state holder (built incrementally, converted at emit time)
+    // Mutable call-state holder
     // -------------------------------------------------------------------------
 
     private static class CallState {
-        final String podName, serviceName, thread, correlationId;
-        final LocalDateTime requestTimestamp;
-        final String method, url;
+        enum Capture { NONE, REQUEST, RESPONSE }
 
-        String requestHeaders, requestBody;
-        LocalDateTime responseTimestamp;
-        Integer responseStatus;
-        String responseStatusText, responseHeaders, responseBody;
-        boolean inResponse = false;
+        final String podName, serviceName, correlationId;
+        final LocalDateTime requestTimestamp;
+        final String method;
+        String url;
+
+        String requestBody, responseBody;
+        Capture capturing = Capture.NONE;
+        boolean sawBemContext = false;
+        boolean sawEvidence = false;
         String forcedStatus = null;
         private static int counter = 0;
 
-        CallState(String podName, String serviceName, String thread, String correlationId,
+        CallState(String podName, String serviceName, String correlationId,
                   LocalDateTime requestTimestamp, String method, String url) {
             this.podName = podName;
             this.serviceName = serviceName;
-            this.thread = thread;
             this.correlationId = correlationId;
             this.requestTimestamp = requestTimestamp;
             this.method = method;
             this.url = url;
         }
 
+        void appendBody(String line) {
+            String target;
+            if (capturing == Capture.REQUEST) {
+                target = (requestBody == null ? "" : requestBody) + "\n" + line;
+                if (target.length() > MAX_BODY_BYTES) target = target.substring(0, MAX_BODY_BYTES);
+                requestBody = target;
+            } else if (capturing == Capture.RESPONSE) {
+                target = (responseBody == null ? "" : responseBody) + "\n" + line;
+                if (target.length() > MAX_BODY_BYTES) target = target.substring(0, MAX_BODY_BYTES);
+                responseBody = target;
+            }
+        }
+
         DownstreamApiCall build() {
-            Long duration = null;
-            if (requestTimestamp != null && responseTimestamp != null)
-                duration = Duration.between(requestTimestamp, responseTimestamp).toMillis();
+            String finalUrl = url;
+            // For SOAP calls, prefer the real target URL extracted from the
+            // request XML's xmlns namespace over the synthetic "soap:..." label.
+            if ("SOAP".equals(method) && requestBody != null) {
+                String nsUrl = extractSoapUrl(requestBody);
+                if (nsUrl != null) finalUrl = nsUrl;
+            }
+
+            String status = forcedStatus != null
+                    ? forcedStatus
+                    : (responseBody != null && isSoapFault(responseBody) ? "SERVER_ERROR" : "SUCCESS");
 
             return DownstreamApiCall.builder()
-                    .id(podName + "-" + thread + "-" + (++counter))
+                    .id(podName + "-" + (++counter))
                     .podName(podName)
                     .serviceName(serviceName)
-                    .thread(thread)
                     .correlationId(correlationId)
                     .requestTimestamp(requestTimestamp)
                     .method(method)
-                    .url(url)
-                    .requestHeaders(requestHeaders)
+                    .url(finalUrl)
                     .requestBody(requestBody)
-                    .responseTimestamp(responseTimestamp)
-                    .responseStatus(responseStatus)
-                    .responseStatusText(responseStatusText)
-                    .responseHeaders(responseHeaders)
                     .responseBody(responseBody)
-                    .durationMs(duration)
-                    .callStatus(forcedStatus != null ? forcedStatus : deriveStatus())
+                    .callStatus(status)
                     .build();
         }
 
-        private String deriveStatus() {
-            if (responseStatus != null) {
-                if (responseStatus < 400) return "SUCCESS";
-                if (responseStatus < 500) return "CLIENT_ERROR";
-                return "SERVER_ERROR";
-            }
-            // No HTTP status code. If we saw any response signal (SOAP body /
-            // status text), use SUCCESS. Otherwise — most apps log only INFO,
-            // so responses aren't in the logs. Assume SUCCESS: we saw the
-            // request get sent and no TIMEOUT/CONN_ERROR/FAULT was flagged
-            // (those paths set forcedStatus and never reach here). Once DEBUG
-            // logging is enabled, real response XML arrives and the SOAP_RESPONSE
-            // handler takes over with deriveSoapStatus() for accurate status.
-            return "SUCCESS";
+        private static boolean isSoapFault(String body) {
+            String u = body.toUpperCase();
+            return u.contains("FAULT") || u.contains("<FAILURE>") || u.contains("<FAILED>");
         }
     }
 }

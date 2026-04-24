@@ -16,8 +16,6 @@ public class DownstreamCallsResponse {
     private int totalCalls;
     private int successCount;
     private int errorCount;
-    private int timeoutCount;
-    private int pendingCount;
     private List<DownstreamApiCall> calls;
     private LocalDateTime timestamp;
 }
