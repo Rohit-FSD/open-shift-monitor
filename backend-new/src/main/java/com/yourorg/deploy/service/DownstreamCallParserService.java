@@ -69,9 +69,18 @@ public class DownstreamCallParserService {
     );
 
     /**
+     * SOAP/XML request body — either on its own line, or tail of the SOAP_START line.
+     *   Request for RetrieveIndividualCustRelationshipListRequest in XML format : <?xml ...>
+     *   ClientName :: method :: Request for X in XML format : <?xml ...>  (single-line combined)
+     */
+    private static final Pattern SOAP_REQUEST_XML = Pattern.compile(
+            "(?i)request\\s+for\\s+(\\w+)\\s+in\\s+(?:xml|json|soap)\\s+format\\s*:\\s*(.+)"
+    );
+
+    /**
      * SOAP/XML response — closes the current call record.
      *   Response for RetrieveIndividualCustomerStatementDetailsResponse in XML format : <?xml ...>
-     *   Response for SomeResponseObject in JSON format : {...}
+     *   ClientName :: method :: Response for X in XML format : <?xml ...>  (single-line combined)
      */
     private static final Pattern SOAP_RESPONSE = Pattern.compile(
             "(?i)response\\s+for\\s+(\\w+)\\s+in\\s+(?:xml|json|soap)\\s+format\\s*:\\s*(.+)"
@@ -213,7 +222,38 @@ public class DownstreamCallParserService {
                 }
                 bemBuffer.clear();
                 state.addRaw(e.getRawLine());
+
+                // Same line may also carry "Request for X in XML format : <body>"
+                // (single-line pattern: ClientName :: method :: Request for X ...)
+                Matcher inlineReq = SOAP_REQUEST_XML.matcher(msg);
+                if (inlineReq.find()) {
+                    state.requestBody = inlineReq.group(2);
+                }
+
+                // Same line may also carry "Response for X in XML format : <body>"
+                // (single-line pattern: ClientName :: method :: Response for X ...)
+                Matcher inlineResp = SOAP_RESPONSE.matcher(msg);
+                if (inlineResp.find()) {
+                    state.responseBody = inlineResp.group(2);
+                    state.responseStatusText = inlineResp.group(1);
+                    state.responseTimestamp = e.getTimestamp();
+                    state.inResponse = true;
+                    state.forcedStatus = deriveSoapStatus(inlineResp.group(2));
+                    result.add(state.build());
+                    state = null;
+                }
                 continue;
+            }
+
+            // ── 2b. Standalone "Request for X in XML format : <body>" line ─────
+            //    (for the two-line pattern where request XML is on its own line)
+            if (state != null && !state.inResponse) {
+                Matcher reqXml = SOAP_REQUEST_XML.matcher(msg);
+                if (reqXml.find()) {
+                    state.requestBody = reqXml.group(2);
+                    state.addRaw(e.getRawLine());
+                    continue;
+                }
             }
 
             // ── 3. REST inline method + URL (call start) ───────────────────────
