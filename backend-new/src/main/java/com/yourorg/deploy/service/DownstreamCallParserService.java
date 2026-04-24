@@ -212,7 +212,7 @@ public class DownstreamCallParserService {
             // ── 2. SOAP client method invocation (call start) ──────────────────
             Matcher soapMatch = SOAP_START.matcher(msg);
             if (soapMatch.find()) {
-                if (state != null) result.add(state.build());
+                closePreviousCall(state, result, e.getTimestamp());
                 String endpoint = "soap:" + soapMatch.group(1) + "::" + soapMatch.group(2);
                 state = new CallState(podName, serviceName, thread, searchId,
                         e.getTimestamp(), "SOAP", endpoint);
@@ -256,7 +256,7 @@ public class DownstreamCallParserService {
             // ── 3. REST inline method + URL (call start) ───────────────────────
             Matcher inline = REQ_INLINE.matcher(msg);
             if (inline.find()) {
-                if (state != null) result.add(state.build());
+                closePreviousCall(state, result, e.getTimestamp());
                 bemBuffer.clear();
                 state = new CallState(podName, serviceName, thread, searchId,
                         e.getTimestamp(), inline.group(1).toUpperCase(), inline.group(2));
@@ -274,7 +274,7 @@ public class DownstreamCallParserService {
             // ── 5. REST split Method (pairs with pending URI) ──────────────────
             Matcher methodOnly = REQ_METHOD_ONLY.matcher(msg);
             if (methodOnly.find() && pendingUri != null) {
-                if (state != null) result.add(state.build());
+                closePreviousCall(state, result, e.getTimestamp());
                 bemBuffer.clear();
                 state = new CallState(podName, serviceName, thread, searchId,
                         e.getTimestamp(), methodOnly.group(1).toUpperCase(), pendingUri);
@@ -358,6 +358,21 @@ public class DownstreamCallParserService {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Close the in-progress call and emit it. When no explicit response was
+     * captured (INFO-only logs), fall back to the next call's start timestamp
+     * as an approximate completion time so the waterfall view still gets a
+     * duration. Once DEBUG is enabled and real Response lines appear, the
+     * real responseTimestamp is used instead.
+     */
+    private void closePreviousCall(CallState state, List<DownstreamApiCall> result, LocalDateTime approxEndTime) {
+        if (state == null) return;
+        if (state.responseTimestamp == null && approxEndTime != null) {
+            state.responseTimestamp = approxEndTime;
+        }
+        result.add(state.build());
+    }
 
     /**
      * The pipe-delimited log format uses a double-pipe before the message:
@@ -456,9 +471,14 @@ public class DownstreamCallParserService {
                 if (responseStatus < 500) return "CLIENT_ERROR";
                 return "SERVER_ERROR";
             }
-            // SOAP call: response captured means success
-            if (responseBody != null || responseStatusText != null) return "SUCCESS";
-            return "PENDING";
+            // No HTTP status code. If we saw any response signal (SOAP body /
+            // status text), use SUCCESS. Otherwise — most apps log only INFO,
+            // so responses aren't in the logs. Assume SUCCESS: we saw the
+            // request get sent and no TIMEOUT/CONN_ERROR/FAULT was flagged
+            // (those paths set forcedStatus and never reach here). Once DEBUG
+            // logging is enabled, real response XML arrives and the SOAP_RESPONSE
+            // handler takes over with deriveSoapStatus() for accurate status.
+            return "SUCCESS";
         }
     }
 }

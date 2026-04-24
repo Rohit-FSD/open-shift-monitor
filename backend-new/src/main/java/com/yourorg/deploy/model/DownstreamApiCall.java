@@ -29,12 +29,14 @@ public class DownstreamApiCall {
     private Long durationMs;
 
     /**
-     * SUCCESS     — 2xx response
+     * SUCCESS     — 2xx response, OR SOAP response captured without FAULT,
+     *               OR request captured with no explicit failure (INFO-only
+     *               logs assume success; check {@code responseBody != null}
+     *               to know whether the status is inferred or confirmed)
      * CLIENT_ERROR — 4xx response
-     * SERVER_ERROR — 5xx response
+     * SERVER_ERROR — 5xx response, OR SOAP response contained FAULT/FAILURE
      * TIMEOUT     — SocketTimeoutException / Read timed out pattern seen
      * CONN_ERROR  — Connection refused / ConnectException pattern seen
-     * PENDING     — request found but no matching response in the logs
      */
     private String callStatus;
 }
