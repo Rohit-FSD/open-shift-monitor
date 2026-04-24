@@ -2,6 +2,8 @@ package com.yourorg.deploy.service;
 
 import com.yourorg.deploy.config.HostConfig;
 import com.yourorg.deploy.config.OpenShiftProperties;
+import com.yourorg.deploy.dto.DownstreamCallsResponse;
+import com.yourorg.deploy.model.DownstreamApiCall;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
@@ -27,6 +29,7 @@ public class JourneyLogService {
     private final OpenShiftProperties openShiftProperties;
     private final HostConfig hostConfig;
     private final TokenService tokenService;
+    private final DownstreamCallParserService downstreamCallParserService;
 
     // -------------------------------------------------------------------------
     // Public API: raw log fetching (used by LogAnalyticsService for success rate)
@@ -189,6 +192,75 @@ public class JourneyLogService {
         } catch (Exception e) {
             log.error("ERROR during log search: {}", e.getMessage(), e);
             throw e;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Public API: downstream call extraction
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fetches raw logs for all (or one) service's pods, then delegates to
+     * {@link DownstreamCallParserService} to extract structured request/response
+     * pairs from the DEBUG-mode downstream HTTP call lines.
+     */
+    public DownstreamCallsResponse getDownstreamCalls(
+            String envName, String searchId,
+            String serviceName, Integer timeRangeMinutes) {
+
+        log.info("DOWNSTREAM CALL EXTRACTION — env={} id={} service={} minutes={}",
+                envName, searchId, serviceName, timeRangeMinutes);
+
+        OpenShiftProperties.EnvDetails envDetails = resolveEnv(envName);
+        String namespace = envDetails.getNamespace();
+
+        try (KubernetesClient client = createKubernetesClient(envName)) {
+            List<Pod> pods = serviceName != null
+                    ? findPodsForService(client, namespace, serviceName)
+                    : getAllPods(client, namespace);
+
+            List<DownstreamApiCall> allCalls = new ArrayList<>();
+
+            for (Pod pod : pods) {
+                String podName = pod.getMetadata().getName();
+                pod.getSpec().getContainers().forEach(container -> {
+                    String logs = fetchContainerLogs(client, namespace, podName,
+                            container.getName(), timeRangeMinutes);
+                    if (logs != null && !logs.isEmpty()) {
+                        List<DownstreamApiCall> calls =
+                                downstreamCallParserService.parseDownstreamCalls(logs, searchId, podName);
+                        allCalls.addAll(calls);
+                    }
+                });
+            }
+
+            // Sort chronologically across all pods
+            allCalls.sort(Comparator.comparing(DownstreamApiCall::getRequestTimestamp,
+                    Comparator.nullsLast(Comparator.naturalOrder())));
+
+            long successCount  = allCalls.stream().filter(c -> "SUCCESS".equals(c.getCallStatus())).count();
+            long errorCount    = allCalls.stream().filter(c -> c.getCallStatus() != null
+                    && (c.getCallStatus().endsWith("ERROR"))).count();
+            long timeoutCount  = allCalls.stream().filter(c -> "TIMEOUT".equals(c.getCallStatus())
+                    || "CONN_ERROR".equals(c.getCallStatus())).count();
+            long pendingCount  = allCalls.stream().filter(c -> "PENDING".equals(c.getCallStatus())).count();
+
+            log.info("Downstream extraction done — total={} success={} error={} timeout={} pending={}",
+                    allCalls.size(), successCount, errorCount, timeoutCount, pendingCount);
+
+            return DownstreamCallsResponse.builder()
+                    .searchId(searchId)
+                    .environment(envName)
+                    .namespace(namespace)
+                    .totalPodsSearched(pods.size())
+                    .totalCalls(allCalls.size())
+                    .successCount((int) successCount)
+                    .errorCount((int) errorCount)
+                    .timeoutCount((int) timeoutCount)
+                    .pendingCount((int) pendingCount)
+                    .calls(allCalls)
+                    .timestamp(LocalDateTime.now())
+                    .build();
         }
     }
 
