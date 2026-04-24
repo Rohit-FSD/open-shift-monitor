@@ -206,7 +206,6 @@ public class DownstreamCallParserService {
             Matcher bemMatch = BEM_DETAIL.matcher(msg);
             if (bemMatch.find()) {
                 bemBuffer.add(bemMatch.group(1).trim());
-                if (state != null) state.addRaw(e.getRawLine());
                 continue;
             }
 
@@ -221,7 +220,6 @@ public class DownstreamCallParserService {
                     state.requestHeaders = String.join("\n", bemBuffer);
                 }
                 bemBuffer.clear();
-                state.addRaw(e.getRawLine());
 
                 // Same line may also carry "Request for X in XML format : <body>"
                 // (single-line pattern: ClientName :: method :: Request for X ...)
@@ -251,7 +249,6 @@ public class DownstreamCallParserService {
                 Matcher reqXml = SOAP_REQUEST_XML.matcher(msg);
                 if (reqXml.find()) {
                     state.requestBody = reqXml.group(2);
-                    state.addRaw(e.getRawLine());
                     continue;
                 }
             }
@@ -263,7 +260,6 @@ public class DownstreamCallParserService {
                 bemBuffer.clear();
                 state = new CallState(podName, serviceName, thread, searchId,
                         e.getTimestamp(), inline.group(1).toUpperCase(), inline.group(2));
-                state.addRaw(e.getRawLine());
                 pendingUri = null;
                 continue;
             }
@@ -272,7 +268,6 @@ public class DownstreamCallParserService {
             Matcher uriOnly = REQ_URI_ONLY.matcher(msg);
             if (uriOnly.find()) {
                 pendingUri = uriOnly.group(1);
-                if (state != null) state.addRaw(e.getRawLine());
                 continue;
             }
 
@@ -283,15 +278,12 @@ public class DownstreamCallParserService {
                 bemBuffer.clear();
                 state = new CallState(podName, serviceName, thread, searchId,
                         e.getTimestamp(), methodOnly.group(1).toUpperCase(), pendingUri);
-                state.addRaw(e.getRawLine());
                 pendingUri = null;
                 continue;
             }
 
             // No active call — skip detail lines
             if (state == null) continue;
-
-            state.addRaw(e.getRawLine());
 
             // ── 6. SOAP response (closes the current call) ─────────────────────
             Matcher soapResp = SOAP_RESPONSE.matcher(msg);
@@ -419,7 +411,6 @@ public class DownstreamCallParserService {
         String responseStatusText, responseHeaders, responseBody;
         boolean inResponse = false;
         String forcedStatus = null;
-        final List<String> rawLines = new ArrayList<>();
         private static int counter = 0;
 
         CallState(String podName, String serviceName, String thread, String correlationId,
@@ -432,8 +423,6 @@ public class DownstreamCallParserService {
             this.method = method;
             this.url = url;
         }
-
-        void addRaw(String line) { if (line != null) rawLines.add(line); }
 
         DownstreamApiCall build() {
             Long duration = null;
@@ -458,7 +447,6 @@ public class DownstreamCallParserService {
                     .responseBody(responseBody)
                     .durationMs(duration)
                     .callStatus(forcedStatus != null ? forcedStatus : deriveStatus())
-                    .rawLines(new ArrayList<>(rawLines))
                     .build();
         }
 

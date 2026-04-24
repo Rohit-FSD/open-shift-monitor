@@ -3,7 +3,6 @@ package com.yourorg.deploy.model;
 import lombok.Builder;
 import lombok.Data;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 @Builder
@@ -38,7 +37,4 @@ public class DownstreamApiCall {
      * PENDING     — request found but no matching response in the logs
      */
     private String callStatus;
-
-    /** Raw log lines that contributed to this call (for debugging / "Raw" tab). */
-    private List<String> rawLines;
 }
