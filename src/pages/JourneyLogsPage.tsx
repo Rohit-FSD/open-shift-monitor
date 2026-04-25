@@ -3,6 +3,7 @@ import Sidebar from "../components/layout/Sidebar"
 import Navbar from "../components/layout/Navbar"
 import ControlBar from "../components/layout/ControlBar"
 import JourneyLogSearch from "../features/dashboard/JourneyLogSearch"
+import DownstreamCallsViewer from "../features/dashboard/DownstreamCallsViewer"
 
 const JourneyLogsPage = () => {
   const [env, setEnv] = useState<string>("")
@@ -23,6 +24,7 @@ const JourneyLogsPage = () => {
             </p>
           </div>
           <JourneyLogSearch env={env} />
+          <DownstreamCallsViewer env={env} />
         </div>
       </div>
     </div>
