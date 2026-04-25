@@ -135,15 +135,16 @@ public class DownstreamCallParserService {
      * XML line (which earlier caused response bodies to be glued to requests).
      */
     private static final Pattern BODY_TERMINATOR = Pattern.compile(
-            "(?i)(^\\w+(?:Facade|Client|BEMHelper)\\s*::)"
-          + "|(^BEMRequestBuilder\\s*::)"
+            "(?i)(\\w+(?:Facade|Client|BEMHelper)\\s*::\\s*\\w+)"
+          + "|(BEMRequestBuilder\\s*::)"
           + "|(request\\s+for\\s+\\w+\\s+in\\s+(?:xml|json|soap)\\s+format)"
           + "|(response\\s+for\\s+\\w+\\s+in\\s+(?:xml|json|soap)\\s+format)"
           + "|(response(?:json|body)\\s+is\\s*:)"
           + "|(resp(?:onse)?\\s+received\\s+with\\s+status\\s+code)"
           + "|(building\\s+(?:success|error)\\s+response)"
-          + "|(^exiting\\b)|(^entering\\b)"
+          + "|(\\bentering\\b)|(\\bexiting\\b)"
           + "|(execution\\s+time)"
+          + "|(sun\\.security\\.ssl|javax\\.net\\.ssl|trust\\s+managers|key\\s+managers|HikariPool)"
           + "|(^\\s*>>\\s)|(^\\s*<<\\s)"
     );
 
@@ -297,17 +298,29 @@ public class DownstreamCallParserService {
                 // 4) Downstream boundary: Facade / Client / BEMHelper.
                 Matcher dsMatch = DS_START.matcher(msg);
                 if (dsMatch.find() && !FRAMEWORK_CLIENT.matcher(dsMatch.group(1)).matches()) {
+                    String newBoundary = dsMatch.group(1) + "::" + dsMatch.group(2);
+
+                    // BEM loggers re-emit the "Client::method" header before the
+                    // response line — same boundary, same call. Don't split it
+                    // into two entries; just keep the existing state alive and
+                    // let the body matchers attach the response to it.
+                    if (state != null && newBoundary.equalsIgnoreCase(state.boundary)) {
+                        absorbSameLineBody(state, msg);
+                        continue;
+                    }
+
                     boolean isSoap = dsMatch.group(1).toLowerCase()
                             .matches(".*(client|bemhelper)$");
 
-                    // New call starts — only emit the previous one if we have proof.
+                    // Different boundary — close the previous call (if proven)
+                    // and start a fresh one.
                     emitIfProven(state, result, idCounter);
 
                     state = new CallState(podName, serviceName, searchId,
                             e.getTimestamp(),
                             isSoap ? "SOAP" : "REST",
-                            (isSoap ? "soap:" : "rest:")
-                                    + dsMatch.group(1) + "::" + dsMatch.group(2));
+                            (isSoap ? "soap:" : "rest:") + newBoundary,
+                            newBoundary);
                     state.sawBemContext = sawBemContext;
                     sawBemContext = false;
 
@@ -352,8 +365,10 @@ public class DownstreamCallParserService {
                 if (state == null) {
                     Matcher inline = REQ_INLINE.matcher(msg);
                     if (inline.find()) {
+                        String url = inline.group(2);
                         state = new CallState(podName, serviceName, searchId,
-                                e.getTimestamp(), "REST", inline.group(2));
+                                e.getTimestamp(), "REST", url,
+                                inline.group(1).toUpperCase() + "::" + url);
                         state.httpMethod = inline.group(1).toUpperCase();
                         state.sawEvidence = true;
                     }
@@ -509,6 +524,8 @@ public class DownstreamCallParserService {
         final String correlationId;
         final LocalDateTime requestTimestamp;
         final String method;   // "SOAP" or "REST"
+        /** "Class::method" — used to detect a re-emitted header for the same call. */
+        final String boundary;
         String httpMethod;     // REST verb: GET / POST / …
         String url;
 
@@ -520,13 +537,15 @@ public class DownstreamCallParserService {
         String forcedStatus = null;
 
         CallState(String podName, String serviceName, String correlationId,
-                  LocalDateTime requestTimestamp, String method, String url) {
+                  LocalDateTime requestTimestamp, String method, String url,
+                  String boundary) {
             this.podName = podName;
             this.serviceName = serviceName;
             this.correlationId = correlationId;
             this.requestTimestamp = requestTimestamp;
             this.method = method;
             this.url = url;
+            this.boundary = boundary;
         }
 
         void appendBody(String line) {
