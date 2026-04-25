@@ -4,6 +4,7 @@ import FiltersPage from "./pages/FiltersPage"
 import SuccessRatePage from "./pages/SuccessRatePage"
 import EnvironmentBookingsPage from "./pages/EnvironmentBookingsPage"
 import JourneyLogsPage from "./pages/JourneyLogsPage"
+import VaultPage from "./pages/VaultPage"
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route path="/journey-logs" element={<JourneyLogsPage />} />
           <Route path="/filters" element={<FiltersPage />} />
           <Route path="/success-rate" element={<SuccessRatePage />} />
+          <Route path="/vault" element={<VaultPage />} />
         </Routes>
       </div>
     </BrowserRouter>

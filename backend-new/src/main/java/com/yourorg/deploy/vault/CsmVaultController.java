@@ -31,6 +31,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class CsmVaultController {
 
     private final CsmVaultService vaultService;
+    private final CsmVaultProperties props;
+
+    /** All configured secret names from application.yml (so the UI can render a picker). */
+    @GetMapping("/configured")
+    public ResponseEntity<Map<String, Object>> configured() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("enabled", props.isEnabled());
+        out.put("baseUrl", props.getBaseUrl());
+        out.put("role", props.getRole());
+        out.put("names", props.getDbSecrets().keySet());
+        out.put("paths", props.getDbSecrets());
+        return ResponseEntity.ok(out);
+    }
 
     /** List what secrets have been loaded so far (no passwords). */
     @GetMapping("/secrets")

@@ -5,6 +5,7 @@ import {
   FileSearch,
   Filter,
   TrendingUp,
+  KeyRound,
   UserCircle,
 } from "lucide-react"
 import { useRole, AppRole } from "../../context/RoleContext"
@@ -24,7 +25,7 @@ const Sidebar = () => {
   const handleRoleChange = (newRole: AppRole) => {
     setRole(newRole)
     // If switching away from PM and on a PM-only page, redirect to dashboard
-    if (newRole !== "PROJECT_MANAGER" && (location.pathname === "/filters" || location.pathname === "/success-rate")) {
+    if (newRole !== "PROJECT_MANAGER" && (location.pathname === "/filters" || location.pathname === "/success-rate" || location.pathname === "/vault")) {
       navigate("/")
     }
   }
@@ -60,6 +61,9 @@ const Sidebar = () => {
 
             <SidebarItem icon={<TrendingUp size={16} />} label="Success Rate"
               active={at("/success-rate")} onClick={() => navigate("/success-rate")} />
+
+            <SidebarItem icon={<KeyRound size={16} />} label="CSM Vault"
+              active={at("/vault")} onClick={() => navigate("/vault")} />
           </>
         )}
 
