@@ -1,6 +1,7 @@
 package com.yourorg.deploy.vault.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
 import lombok.Data;
 
@@ -23,5 +24,6 @@ public class CsmSecretResponse {
 
     private Map<String, Object> data;
 
+    @JsonProperty("lease_duration")
     private long leaseDuration;
 }
