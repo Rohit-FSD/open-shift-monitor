@@ -341,18 +341,26 @@ public class JourneyLogService {
                     .getItems();
         }
 
-        // Final fallback: match by pod-name prefix (e.g. "bcp-css-service-5f7b9d6867-855sc")
-        // This matches what /api/deployments/status uses.
+        // Final fallback: match by pod-name prefix (e.g. "bcp-css-service-5f7b9d6867-855sc").
+        // A Deployment pod is always "<deploy>-<rs-hash>-<pod-hash>" — exactly two
+        // alphanumeric chunks after the service name. This rejects sibling deployments
+        // that share a prefix (e.g. "bcp-idv-service-nfr-..." should NOT match
+        // serviceName="bcp-idv-service").
         if (pods.isEmpty()) {
             log.warn("No labeled pods found, falling back to pod-name prefix match for: {}", serviceName);
+            String prefix = serviceName + "-";
+            java.util.regex.Pattern tail = java.util.regex.Pattern.compile("^[a-z0-9]+-[a-z0-9]+$");
             pods = client.pods()
                     .inNamespace(namespace)
                     .list()
                     .getItems()
                     .stream()
-                    .filter(p -> p.getMetadata() != null
-                            && p.getMetadata().getName() != null
-                            && p.getMetadata().getName().startsWith(serviceName + "-"))
+                    .filter(p -> p.getMetadata() != null && p.getMetadata().getName() != null)
+                    .filter(p -> {
+                        String name = p.getMetadata().getName();
+                        if (!name.startsWith(prefix)) return false;
+                        return tail.matcher(name.substring(prefix.length())).matches();
+                    })
                     .collect(Collectors.toList());
         }
 
