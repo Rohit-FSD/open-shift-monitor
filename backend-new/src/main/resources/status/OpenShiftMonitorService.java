@@ -150,11 +150,25 @@ public class OpenShiftMonitorService {
                 .list().getItems();
         List<PodInfo> podInfos = pods.stream().map(this::mapToPodInfo).collect(Collectors.toList());
 
-        // Revision + last-deployed timestamp
+        // Revision + last-deployed timestamp + previous version
         Long revision = parseRevision(d);
-        Instant lastDeployedAt = findActiveReplicaSet(client, namespace, d, revision)
+        List<ReplicaSet> rsList = listReplicaSets(client, namespace, d);
+
+        Instant lastDeployedAt = findActiveRs(rsList, revision)
                 .map(rs -> parseInstant(rs.getMetadata().getCreationTimestamp()))
                 .orElseGet(() -> parseInstant(d.getMetadata().getCreationTimestamp()));
+
+        Optional<ReplicaSet> previous = findPreviousRs(rsList, revision);
+        Long previousRevision = previous.map(this::parseRevision).orElse(null);
+        Map<String, String> previousContainerVersions = previous
+                .map(this::extractContainerVersions)
+                .orElse(null);
+        String previousVersion = previousContainerVersions != null && !previousContainerVersions.isEmpty()
+                ? previousContainerVersions.values().iterator().next()
+                : null;
+        Instant previousDeployedAt = previous
+                .map(rs -> parseInstant(rs.getMetadata().getCreationTimestamp()))
+                .orElse(null);
 
         // lastUpdated reflects when the Deployment's status was last observed by K8s
         Instant lastUpdated = d.getStatus() != null && d.getStatus().getConditions() != null
@@ -179,7 +193,61 @@ public class OpenShiftMonitorService {
                 .revision(revision)
                 .lastDeployedAt(lastDeployedAt)
                 .lastUpdated(lastUpdated)
+                .previousRevision(previousRevision)
+                .previousVersion(previousVersion)
+                .previousContainerVersions(previousContainerVersions)
+                .previousDeployedAt(previousDeployedAt)
                 .build();
+    }
+
+    private List<ReplicaSet> listReplicaSets(KubernetesClient client, String namespace, Deployment d) {
+        try {
+            return client.apps().replicaSets()
+                    .inNamespace(namespace)
+                    .withLabels(d.getSpec().getSelector().getMatchLabels())
+                    .list().getItems();
+        } catch (Exception e) {
+            log.debug("ReplicaSet list failed for {}: {}", d.getMetadata().getName(), e.getMessage());
+            return List.of();
+        }
+    }
+
+    private Optional<ReplicaSet> findActiveRs(List<ReplicaSet> rsList, Long revision) {
+        if (revision != null) {
+            Optional<ReplicaSet> match = rsList.stream()
+                    .filter(rs -> revision.equals(parseRevision(rs)))
+                    .findFirst();
+            if (match.isPresent()) return match;
+        }
+        return rsList.stream()
+                .filter(rs -> rs.getSpec() != null
+                        && rs.getSpec().getReplicas() != null
+                        && rs.getSpec().getReplicas() > 0)
+                .max(Comparator.comparing(rs -> parseInstant(rs.getMetadata().getCreationTimestamp()),
+                        Comparator.nullsFirst(Comparator.naturalOrder())));
+    }
+
+    private Optional<ReplicaSet> findPreviousRs(List<ReplicaSet> rsList, Long currentRevision) {
+        // Take the highest revision strictly less than current
+        return rsList.stream()
+                .filter(rs -> {
+                    Long r = parseRevision(rs);
+                    return r != null && (currentRevision == null || r < currentRevision);
+                })
+                .max(Comparator.comparing(this::parseRevision,
+                        Comparator.nullsFirst(Comparator.naturalOrder())));
+    }
+
+    private Map<String, String> extractContainerVersions(ReplicaSet rs) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (rs.getSpec() == null || rs.getSpec().getTemplate() == null
+                || rs.getSpec().getTemplate().getSpec() == null) {
+            return out;
+        }
+        for (Container c : rs.getSpec().getTemplate().getSpec().getContainers()) {
+            out.put(c.getName(), extractVersion(c.getImage()));
+        }
+        return out;
     }
 
     private PodInfo mapToPodInfo(Pod pod) {
@@ -224,39 +292,7 @@ public class OpenShiftMonitorService {
                 .build();
     }
 
-    /**
-     * Returns the ReplicaSet matching the deployment's current revision.
-     * That RS's creationTimestamp = when the current image rolled out.
-     */
-    private Optional<ReplicaSet> findActiveReplicaSet(KubernetesClient client, String namespace,
-                                                      Deployment d, Long revision) {
-        try {
-            Map<String, String> selector = d.getSpec().getSelector().getMatchLabels();
-            List<ReplicaSet> rsList = client.apps().replicaSets()
-                    .inNamespace(namespace)
-                    .withLabels(selector)
-                    .list().getItems();
-
-            if (revision != null) {
-                Optional<ReplicaSet> match = rsList.stream()
-                        .filter(rs -> revision.equals(parseRevision(rs)))
-                        .findFirst();
-                if (match.isPresent()) return match;
-            }
-            // Fallback: pick the newest RS that has at least one replica
-            return rsList.stream()
-                    .filter(rs -> rs.getSpec() != null
-                            && rs.getSpec().getReplicas() != null
-                            && rs.getSpec().getReplicas() > 0)
-                    .max(Comparator.comparing(rs -> parseInstant(rs.getMetadata().getCreationTimestamp()),
-                            Comparator.nullsFirst(Comparator.naturalOrder())));
-        } catch (Exception e) {
-            log.debug("ReplicaSet lookup failed for {}: {}", d.getMetadata().getName(), e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    private String getContainerState(ContainerState state) {
+private String getContainerState(ContainerState state) {
         if (state == null) return "Unknown";
         if (state.getRunning() != null) return "Running";
         if (state.getWaiting() != null) {

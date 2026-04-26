@@ -1,4 +1,4 @@
-import { Clock, GitCommit, X } from "lucide-react"
+import { Clock, GitCommit, History, X } from "lucide-react"
 import { useEffect } from "react"
 import useLogFailures from "../../hooks/useLogFailures"
 
@@ -27,6 +27,10 @@ interface Service {
   lastDeployedAt?: string
   lastUpdated?: string
   containerVersions?: Record<string, string>
+  previousRevision?: number
+  previousVersion?: string
+  previousContainerVersions?: Record<string, string>
+  previousDeployedAt?: string
 }
 
 interface Props {
@@ -110,6 +114,38 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
             {service.lastUpdated && service.lastUpdated !== service.lastDeployedAt && (
               <div className="text-[11px] text-slate-500">
                 Status updated {timeAgo(service.lastUpdated)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {(service.previousVersion || service.previousDeployedAt || service.previousRevision != null) && (
+          <div className="mb-6 bg-slate-800/40 border border-slate-700 rounded p-3 space-y-2">
+            <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <History size={14} className="text-amber-400" />
+              Previous Version
+            </h3>
+            {service.previousContainerVersions && Object.keys(service.previousContainerVersions).length > 0 ? (
+              <div className="space-y-0.5 text-xs">
+                {Object.entries(service.previousContainerVersions).map(([name, ver]) => (
+                  <div key={name}>
+                    <span className="text-slate-400">{name}: </span>
+                    <span className="text-white font-mono">{ver}</span>
+                  </div>
+                ))}
+              </div>
+            ) : service.previousVersion ? (
+              <div className="text-xs text-white font-mono">{service.previousVersion}</div>
+            ) : null}
+            {service.previousDeployedAt && (
+              <div className="text-[11px] text-slate-400">
+                Deployed {formatDateTime(service.previousDeployedAt)} ({timeAgo(service.previousDeployedAt)})
+              </div>
+            )}
+            {service.previousRevision != null && (
+              <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                <GitCommit size={10} />
+                Revision <span className="font-mono text-slate-400">#{service.previousRevision}</span>
               </div>
             )}
           </div>

@@ -36,4 +36,10 @@ public class DeploymentInfo {
     private Long revision;
     private Instant lastDeployedAt;
     private Instant lastUpdated;
+
+    // Previous rollout (one revision back), if still in K8s history
+    private Long previousRevision;
+    private String previousVersion;
+    private Map<String, String> previousContainerVersions;
+    private Instant previousDeployedAt;
 }
