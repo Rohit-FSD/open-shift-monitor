@@ -24,6 +24,9 @@ interface Service {
   namespace: string
   pods: Pod[]
   containerVersions?: Record<string, string>
+  revision?: number
+  lastDeployedAt?: string
+  lastUpdated?: string
 }
 
 interface Props {
@@ -104,7 +107,13 @@ const ServicesTable = ({ services, env }: Props) => {
                 >
 
                   <td className="py-4 text-white">
-                    {service.name}
+                    <div>{service.name}</div>
+                    {service.lastDeployedAt && (
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        Deployed {timeAgo(service.lastDeployedAt)}
+                        {service.revision != null && ` · #${service.revision}`}
+                      </div>
+                    )}
                   </td>
 
                   <td className="py-4">
@@ -153,6 +162,20 @@ const ServicesTable = ({ services, env }: Props) => {
       )}
     </>
   )
+}
+
+function timeAgo(iso: string): string {
+  const t = new Date(iso).getTime()
+  if (isNaN(t)) return ""
+  const mins = Math.floor((Date.now() - t) / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`
 }
 
 export default ServicesTable

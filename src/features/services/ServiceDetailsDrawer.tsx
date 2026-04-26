@@ -1,4 +1,4 @@
-import { X } from "lucide-react"
+import { Clock, GitCommit, X } from "lucide-react"
 import { useEffect } from "react"
 import useLogFailures from "../../hooks/useLogFailures"
 
@@ -12,6 +12,8 @@ interface Pod {
   node: string
   restarts: number
   containers: Container[]
+  created?: string
+  startedAt?: string
 }
 
 interface Service {
@@ -21,6 +23,10 @@ interface Service {
   readyReplicas: number
   status: string
   pods: Pod[]
+  revision?: number
+  lastDeployedAt?: string
+  lastUpdated?: string
+  containerVersions?: Record<string, string>
 }
 
 interface Props {
@@ -83,6 +89,32 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
           </p>
         </div>
 
+        {(service.lastDeployedAt || service.revision != null) && (
+          <div className="mb-6 bg-slate-800/60 border border-slate-700 rounded p-3 space-y-2">
+            <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <Clock size={14} className="text-blue-400" />
+              Last Deployed
+            </h3>
+            {service.lastDeployedAt && (
+              <div className="text-xs">
+                <div className="text-white">{formatDateTime(service.lastDeployedAt)}</div>
+                <div className="text-slate-400">{timeAgo(service.lastDeployedAt)}</div>
+              </div>
+            )}
+            {service.revision != null && (
+              <div className="text-xs flex items-center gap-1.5 text-slate-400">
+                <GitCommit size={11} />
+                Revision <span className="text-slate-200 font-mono">#{service.revision}</span>
+              </div>
+            )}
+            {service.lastUpdated && service.lastUpdated !== service.lastDeployedAt && (
+              <div className="text-[11px] text-slate-500">
+                Status updated {timeAgo(service.lastUpdated)}
+              </div>
+            )}
+          </div>
+        )}
+
         {pods[0]?.containers?.length > 0 && (
           <div className="mb-6">
             <h3 className="text-sm font-semibold mb-2 text-slate-300">Container Versions</h3>
@@ -114,6 +146,11 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
                 <div className="text-white font-mono mb-1">{p.name}</div>
                 <div className="text-slate-400">Node: {p.node}</div>
                 <div className="text-slate-400">Restarts: {p.restarts}</div>
+                {p.startedAt && (
+                  <div className="text-slate-400">
+                    Started: {timeAgo(p.startedAt)}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -143,6 +180,29 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
       </div>
     </div>
   )
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  })
+}
+
+function timeAgo(iso: string): string {
+  const t = new Date(iso).getTime()
+  if (isNaN(t)) return ""
+  const mins = Math.floor((Date.now() - t) / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`
 }
 
 export default ServiceDetailsDrawer
