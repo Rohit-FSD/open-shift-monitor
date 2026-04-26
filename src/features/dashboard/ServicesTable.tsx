@@ -23,6 +23,7 @@ interface Service {
   status: string
   namespace: string
   pods: Pod[]
+  containerVersions?: Record<string, string>
 }
 
 interface Props {
@@ -49,6 +50,23 @@ const ServicesTable = ({ services, env }: Props) => {
     return parts[1] || "N/A"
   }
 
+  const renderContainerVersions = (service: Service) => {
+    const cv = service.containerVersions
+    if (cv && Object.keys(cv).length > 0) {
+      return (
+        <div className="space-y-0.5">
+          {Object.entries(cv).map(([name, version]) => (
+            <div key={name} className="text-xs">
+              <span className="text-slate-400">{name}: </span>
+              <span className="text-white font-medium">{version}</span>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    return <span className="text-xs text-slate-300">{getVersion(service.image)}</span>
+  }
+
   return (
 
     <>
@@ -57,12 +75,12 @@ const ServicesTable = ({ services, env }: Props) => {
         <table className="w-full">
 
           <thead>
-            <tr className="text-slate-400 border-b border-slate-700">
+            <tr className="text-slate-400 border-b border-slate-700 text-sm">
               <th className="py-3 text-left">Service</th>
-              <th className="text-left">Version</th>
+              <th className="text-left">Container Versions</th>
               <th className="text-left">Pods</th>
               <th className="text-left">Uptime</th>
-              <th className="text-left">SLA</th>
+              <th className="text-left">Health Status</th>
             </tr>
           </thead>
 
@@ -85,15 +103,15 @@ const ServicesTable = ({ services, env }: Props) => {
                   onClick={() => setSelectedService(service)}
                 >
 
-                  <td className="py-4">
+                  <td className="py-4 text-white">
                     {service.name}
                   </td>
 
-                  <td>
-                    {getVersion(service.image)}
+                  <td className="py-4">
+                    {renderContainerVersions(service)}
                   </td>
 
-                  <td>
+                  <td className="text-white">
                     {pods}
                   </td>
 
@@ -128,7 +146,7 @@ const ServicesTable = ({ services, env }: Props) => {
 
         <ServiceDetailsDrawer
           service={selectedService}
-          env={env}   // 🔥 ENV PASSED HERE
+          env={env}
           onClose={() => setSelectedService(null)}
         />
 
