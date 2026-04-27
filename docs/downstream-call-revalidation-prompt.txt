@@ -1,0 +1,133 @@
+TASK: Revalidate the log-parsing logic of our downstream-API-call extractor against
+real production logs. We suspect the parser is missing REST request/response pairs
+because some log lines don't match our current patterns.
+
+GOAL
+Tell us, with evidence from real logs:
+  1. Which downstream REST/SOAP/DB calls in the logs we are FAILING to extract.
+  2. The exact log-line patterns we missed.
+  3. Suggested regex / state-machine changes (or new patterns) to cover them.
+  4. Any false positives we currently emit (rows that aren't real downstream calls).
+
+INPUT YOU HAVE
+- Raw pod logs from one or more services (please use a real correlationId / TID
+  trace where you already know how many downstream calls were made, so you can
+  verify our count).
+
+WHAT THE PARSER IS SUPPOSED TO DO
+Given raw pod logs and a searchId (correlationId or TID), produce one row per
+downstream HTTP/SOAP/DB call with:
+  { id, callGroupId, correlationId, podName, serviceName,
+    direction, protocol (REST|SOAP|DB|NETWORK),
+    method (GET|POST|...), targetUrl, requestBody, responseBody,
+    httpStatus, callStatus (SUCCESS|CLIENT_ERROR|SERVER_ERROR|TIMEOUT|CONN_ERROR),
+    requestTimestamp, responseTimestamp, durationMs }
+
+ARCHITECTURE ASSUMPTION (important for filtering)
+Application flow is:  Controller -> Service -> (Facade | Client | BEMHelper) -> external hop.
+ONLY the last layer (Facade / Client / BEMHelper) is a real downstream call.
+Everything ending in *ServiceImpl, *Mapper, *Util, *Filter, *Handler is internal
+and must NOT produce a row. Framework classes (HttpClient, RestTemplate,
+WebClient, FeignClient, OkHttpClient) are also NOT downstreams on their own.
+
+CURRENT LOG-PARSING PATTERNS WE HANDLE
+
+A) Pipe-delimited app log (with TID + correlationId):
+   2026-04-17 10:10:38 555|[TID a210c5ce-...]|http-nio-8081-exec-5|INFO|[c62b55a1-...]|<message>
+   Regex groups: timestamp, tid, thread, level, correlationId, message
+
+B) Pipe-delimited app log with EMPTY brackets (async pool dropped MDC):
+   2026-04-18 10:34:50 260|[]|scheduling-1|INFO|[]|<message>
+   When brackets are empty, we look for a leading UUID inside the message
+   (either "[uuid] :: ..." or "uuid : ...") and use that as the correlationId
+   AND as a "callGroupId" used for stitching across thread hops.
+
+C) java.util.logging two-line format (JBoss/WebLogic):
+   Apr 18, 2026 12:03:26 PM oracle.jdbc.driver.PhysicalConnection connect
+   INFO: <message>
+
+D) Anything that doesn't match A/B/C is kept as a fallback entry with the raw
+   line as the message — so stack traces, ORA-XXXXX, "at com.foo..." still flow
+   through to classifiers.
+
+CALL-BOUNDARY DETECTION (only these classes count as downstreams)
+  Facade   : (\w*?Facade)::(\w+)        e.g. ODSFacade::executeOdsApiCall
+  Client   : (\w*?Client)::(\w+)        e.g. IndividualCustomerRelationshipClient::sendRequest
+  BEMHelper: (\w*?BEMHelper)::(\w+)     e.g. BEMHelper::invoke
+
+THREE LOG SHAPES THE STATE MACHINE EXPECTS
+
+(C) SOAP — typical BEM client:
+   BEMRequestBuilder :: buildBEMRequestHeader :: ...        (context, buffered)
+   <SomethingClient> :: <method> ::                         (call start)
+   Request for XRequest in XML format : <?xml ...>          (request body, multi-line)
+   Response for XResponse in XML format : <?xml ...>        (DEBUG-only response body)
+
+(A) REST Facade with explicit call-group id in brackets:
+   [ef186bb1-...] :: ODSFacade::executeOdsApiCall : START
+   [ef186bb1-...] :: ODSFacade::executeOdsApiCall : request method : POST and url : https://...
+   [ef186bb1-...] :: ODSFacade::executeOdsApiCall : Response received with Status code : 200
+
+(B) REST Facade with embedded UUID prefix (async, empty MDC bracket):
+   38e095c8-... :ConsentFacade :: executeConsentApiCall : Sending request to Consent DB
+   responseJson is : { ..., "statusCode":201, "errors":null, ... }
+   38e095c8-... :ConsentFacade :: executeConsentApiCall : Response received with Status code : 201
+
+GROUPING ORDER (for stitching async / threaded calls)
+  callGroupId  ->  correlationId  ->  TID  ->  thread
+
+OUR REQUEST/RESPONSE BODY PATTERNS (REST)
+  REQ_METHOD_URL : "request method : POST and url|uri : https://..."
+  REQ_INLINE     : ">>> POST https://...", "calling: GET ...", "outbound POST ..."
+  REQ_SENDING    : "Sending request to <destination>"
+  RESP_JSON      : "responseJson is : {…}"  or  "responseBody is : {…}"
+  RESP_STATUS    : "Response received with Status code : 200",
+                   "Response status : 200", "<<< 200 OK", "status=200", "status: 200"
+
+OUR ERROR CLASSIFIERS
+  TIMEOUT    : SocketTimeoutException, "Read timed out", "connection timed out", "connect timeout"
+  CONN_ERROR : "Connection refused", ConnectException, "No route to host", UnknownHostException
+  SERVER_ERR : any *Exception inside open call window, "Caused by:", "at com.…(...)"
+  BIZ_ERROR  : in a JSON body — "errors":[{...}], "statusCode":"FAIL|FAILED|ERROR",
+               "responseCode":"7XX"
+
+WHAT WE WANT YOU TO CHECK ON REAL LOGS
+1. Pull ~30 min of logs for a busy service. Pick a correlationId you know
+   produced N downstream calls.
+2. Run the patterns above mentally (or grep) and see how many calls our parser
+   would output.
+3. For every REST call you can see in the log that we would NOT extract,
+   capture the EXACT log-line shape (start line, request body line, response
+   line, terminator line). We especially expect to find these gaps:
+     - Request method/URL on a single line we don't recognize
+       (e.g. "Calling endpoint http://...", "URL=..., METHOD=...",
+        "RestTemplate.exchange ... uri=...")
+     - Response body in a different phrasing
+       (e.g. "response payload:", "Response body received:",
+        "Result: {...}", "OUT >> {...}")
+     - Status code in a different format
+       (e.g. "[200 OK]", "(HTTP/1.1 200)", "rc=200", "responseCode=200")
+     - Calls that come from a class NOT ending in Facade/Client/BEMHelper
+       but ARE real downstreams (e.g. "*Gateway", "*Proxy", "*Adapter",
+       "*Connector", "*Invoker") — list any you find.
+     - SOAP request/response with a different phrase than
+       "Request|Response for X in XML format :"
+4. Also list false positives: rows we WOULD emit that aren't real downstreams
+   (internal helpers misclassified as downstream).
+
+OUTPUT WE WANT FROM YOU
+For each gap, give us:
+  - Sample log line (sanitized of PII)
+  - What it represents (call start / req body / resp body / status)
+  - Suggested regex to add (or modification to an existing one)
+  - Which classifier it should feed (REST | SOAP | DB | NETWORK)
+  - Whether it requires a state-machine change (e.g. new "call start" trigger)
+
+If possible, also report:
+  - Total downstream calls actually visible in your sample logs
+  - How many our current parser would extract (rough estimate is fine)
+  - The miss rate, broken down by protocol
+
+Be specific — give us patterns we can paste straight into the regex list and
+test cases (input log lines + expected output rows) we can wire into our unit
+tests.
