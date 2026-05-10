@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: openshift-monitor
+  namespace: your-sit-namespace
+spec:
+  selector:
+    app: openshift-monitor
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080

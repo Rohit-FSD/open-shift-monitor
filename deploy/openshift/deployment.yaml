@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openshift-monitor
+  namespace: your-sit-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openshift-monitor
+  template:
+    metadata:
+      labels:
+        app: openshift-monitor
+    spec:
+      containers:
+        - name: openshift-monitor
+          image: registry.gitlab.com/your-group/openshift-monitor:sit
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "sit"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
