@@ -4,6 +4,7 @@ import com.yourorg.deploy.config.HostConfig;
 import com.yourorg.deploy.config.OpenShiftProperties;
 import com.yourorg.deploy.dto.DownstreamCallsResponse;
 import com.yourorg.deploy.model.DownstreamApiCall;
+import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
@@ -12,6 +13,10 @@ import io.fabric8.kubernetes.client.ConfigBuilder;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -31,6 +36,16 @@ public class JourneyLogService {
     private final TokenService tokenService;
     private final DownstreamCallParserService downstreamCallParserService;
 
+    // One fixed-size pool for all parallel pod-log fetches (IO-bound).
+    // 20 threads covers 10 pods × 2 containers in one round-trip.
+    private static final ExecutorService POD_FETCH_EXECUTOR =
+            Executors.newFixedThreadPool(20);
+
+    // KubernetesClient is expensive to create (OkHttp connection pool + TLS).
+    // Cache one per environment so we reuse connections across requests.
+    private final ConcurrentHashMap<String, KubernetesClient> clientCache =
+            new ConcurrentHashMap<>();
+
     // -------------------------------------------------------------------------
     // Public API: raw log fetching (used by LogAnalyticsService for success rate)
     // -------------------------------------------------------------------------
@@ -43,8 +58,8 @@ public class JourneyLogService {
         log.info("Fetching ALL logs for environment: {} (last {} minutes)", envName, timeRangeMinutes);
         OpenShiftProperties.EnvDetails envDetails = resolveEnv(envName);
         String namespace = envDetails.getNamespace();
-
-        try (KubernetesClient client = createKubernetesClient(envName)) {
+        try {
+            KubernetesClient client = getOrCreateClient(envName);
             List<Pod> pods = getAllPods(client, namespace);
             log.info("Found {} pods in environment {}", pods.size(), envName);
             return fetchLogsForPods(pods, client, namespace, timeRangeMinutes);
@@ -62,8 +77,8 @@ public class JourneyLogService {
                 serviceName, envName, timeRangeMinutes);
         OpenShiftProperties.EnvDetails envDetails = resolveEnv(envName);
         String namespace = envDetails.getNamespace();
-
-        try (KubernetesClient client = createKubernetesClient(envName)) {
+        try {
+            KubernetesClient client = getOrCreateClient(envName);
             List<Pod> pods = findPodsForService(client, namespace, serviceName);
             log.info("Found {} pods for service {}", pods.size(), serviceName);
             return fetchLogsForPods(pods, client, namespace, timeRangeMinutes);
@@ -82,7 +97,8 @@ public class JourneyLogService {
     public ServiceSnapshot getServiceSnapshot(String envName, String serviceName, int timeRangeMinutes) {
         OpenShiftProperties.EnvDetails envDetails = resolveEnv(envName);
         String namespace = envDetails.getNamespace();
-        try (KubernetesClient client = createKubernetesClient(envName)) {
+        try {
+            KubernetesClient client = getOrCreateClient(envName);
             List<Pod> pods = findPodsForService(client, namespace, serviceName);
             String logs = fetchLogsForPods(pods, client, namespace, timeRangeMinutes);
             return ServiceSnapshot.builder()
@@ -107,74 +123,55 @@ public class JourneyLogService {
      */
     public JourneyLogsResponse getJourneyLogs(String envName, String searchId,
                                                String serviceName, Integer timeRangeMinutes) {
-        log.info("{}", "=".repeat(80));
-        log.info("JOURNEY LOG SEARCH STARTED");
-        log.info("Search ID: {}", searchId);
-        log.info("Environment: {}", envName);
-        log.info("Service Filter: {}", serviceName != null ? serviceName : "ALL");
-        log.info("Time Range: {} minutes", timeRangeMinutes);
-        log.info("{}", "=".repeat(80));
+        log.info("Journey log search — env={} id={} service={} minutes={}",
+                envName, searchId, serviceName != null ? serviceName : "ALL", timeRangeMinutes);
 
         OpenShiftProperties.EnvDetails envDetails = resolveEnv(envName);
         String namespace = envDetails.getNamespace();
 
-        try (KubernetesClient client = createKubernetesClient(envName)) {
+        try {
+            KubernetesClient client = getOrCreateClient(envName);
             List<Pod> pods = serviceName != null
                     ? findPodsForService(client, namespace, serviceName)
                     : getAllPods(client, namespace);
 
             log.info("Found {} pods to search", pods.size());
 
-            List<PodLogEntry> logEntries = new ArrayList<>();
-
+            // Build one task per (pod, container) and fetch all logs in parallel.
+            List<CompletableFuture<Optional<PodLogEntry>>> futures = new ArrayList<>();
             for (Pod pod : pods) {
                 String podName = pod.getMetadata().getName();
-                log.info("\n{}", "-".repeat(80));
-                log.info("Searching pod: {}", podName);
-
-                pod.getSpec().getContainers().forEach(container -> {
+                for (Container container : pod.getSpec().getContainers()) {
                     String containerName = container.getName();
-                    log.info("  Container: {}", containerName);
-
-                    String logs = fetchContainerLogs(client, namespace, podName,
-                            containerName, timeRangeMinutes);
-
-                    if (logs == null || logs.isEmpty()) {
-                        log.warn("  No logs returned from container: {}", containerName);
-                        return;
-                    }
-
-                    long totalLines = logs.lines().count();
-                    log.info("  Fetched {} lines ({} bytes)", totalLines, logs.length());
-
-                    // grepLogs returns matching lines with 2-line context — for display only
-                    List<String> matchingLines = grepLogs(logs, searchId);
-
-                    if (!matchingLines.isEmpty()) {
-                        log.info("  FOUND {} MATCHES!", matchingLines.size());
-                        // Count only lines that are direct matches (prefixed ">>>"), not context lines
+                    futures.add(CompletableFuture.supplyAsync(() -> {
+                        String logs = fetchContainerLogs(client, namespace, podName,
+                                containerName, timeRangeMinutes);
+                        if (logs == null || logs.isEmpty()) return Optional.empty();
+                        List<String> matchingLines = grepLogs(logs, searchId);
+                        if (matchingLines.isEmpty()) return Optional.empty();
                         long directMatches = matchingLines.stream()
-                                .filter(l -> l.startsWith(">>>"))
-                                .count();
-                        logEntries.add(PodLogEntry.builder()
+                                .filter(l -> l.startsWith(">>>")).count();
+                        return Optional.of(PodLogEntry.builder()
                                 .podName(podName)
                                 .containerName(containerName)
                                 .serviceName(extractServiceName(podName))
                                 .matchingLines(matchingLines)
-                                .totalMatches((int) directMatches)   // FIX: count only direct hits
+                                .totalMatches((int) directMatches)
                                 .build());
-                    } else {
-                        log.warn("  NO MATCHES in {} lines", totalLines);
-                    }
-                });
+                    }, POD_FETCH_EXECUTOR));
+                }
             }
 
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+            List<PodLogEntry> logEntries = futures.stream()
+                    .map(CompletableFuture::join)
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .collect(Collectors.toList());
+
             int totalMatches = logEntries.stream().mapToInt(PodLogEntry::getTotalMatches).sum();
-            log.info("{}", "=".repeat(80));
-            log.info("SEARCH COMPLETE");
-            log.info("Total Pods Searched: {}", pods.size());
-            log.info("Total Matches Found: {}", totalMatches);
-            log.info("{}", "=".repeat(80));
+            log.info("Search complete — pods={} matches={}", pods.size(), totalMatches);
 
             return JourneyLogsResponse.builder()
                     .searchId(searchId)
@@ -214,25 +211,32 @@ public class JourneyLogService {
         OpenShiftProperties.EnvDetails envDetails = resolveEnv(envName);
         String namespace = envDetails.getNamespace();
 
-        try (KubernetesClient client = createKubernetesClient(envName)) {
+        try {
+            KubernetesClient client = getOrCreateClient(envName);
             List<Pod> pods = serviceName != null
                     ? findPodsForService(client, namespace, serviceName)
                     : getAllPods(client, namespace);
 
-            List<DownstreamApiCall> allCalls = new ArrayList<>();
-
+            // Fetch and parse each (pod, container) in parallel — independent operations.
+            List<CompletableFuture<List<DownstreamApiCall>>> futures = new ArrayList<>();
             for (Pod pod : pods) {
                 String podName = pod.getMetadata().getName();
-                pod.getSpec().getContainers().forEach(container -> {
-                    String logs = fetchContainerLogs(client, namespace, podName,
-                            container.getName(), timeRangeMinutes);
-                    if (logs != null && !logs.isEmpty()) {
-                        List<DownstreamApiCall> calls =
-                                downstreamCallParserService.parseDownstreamCalls(logs, searchId, podName);
-                        allCalls.addAll(calls);
-                    }
-                });
+                for (Container container : pod.getSpec().getContainers()) {
+                    String containerName = container.getName();
+                    futures.add(CompletableFuture.supplyAsync(() -> {
+                        String logs = fetchContainerLogs(client, namespace, podName,
+                                containerName, timeRangeMinutes);
+                        if (logs == null || logs.isEmpty()) return Collections.emptyList();
+                        return downstreamCallParserService.parseDownstreamCalls(logs, searchId, podName);
+                    }, POD_FETCH_EXECUTOR));
+                }
             }
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+            List<DownstreamApiCall> allCalls = futures.stream()
+                    .flatMap(f -> f.join().stream())
+                    .collect(Collectors.toList());
 
             // Sort chronologically across all pods
             allCalls.sort(Comparator.comparing(DownstreamApiCall::getRequestTimestamp,
@@ -260,6 +264,9 @@ public class JourneyLogService {
                     .calls(allCalls)
                     .timestamp(LocalDateTime.now())
                     .build();
+        } catch (Exception e) {
+            log.error("ERROR during downstream extraction: {}", e.getMessage(), e);
+            throw e;
         }
     }
 
@@ -273,35 +280,45 @@ public class JourneyLogService {
      */
     private String fetchLogsForPods(List<Pod> pods, KubernetesClient client,
                                      String namespace, Integer timeRangeMinutes) {
-        StringBuilder allLogs = new StringBuilder();
+        List<CompletableFuture<String>> futures = new ArrayList<>();
         for (Pod pod : pods) {
             String podName = pod.getMetadata().getName();
-            pod.getSpec().getContainers().forEach(container -> {
-                String logs = fetchContainerLogs(client, namespace, podName,
-                        container.getName(), timeRangeMinutes);
-                if (logs != null && !logs.isEmpty()) {
-                    allLogs.append(logs).append("\n");
-                }
-            });
+            for (Container container : pod.getSpec().getContainers()) {
+                String containerName = container.getName();
+                futures.add(CompletableFuture.supplyAsync(
+                        () -> fetchContainerLogs(client, namespace, podName, containerName, timeRangeMinutes),
+                        POD_FETCH_EXECUTOR));
+            }
         }
-        log.info("Fetched {} bytes of logs from {} pods", allLogs.length(), pods.size());
-        return allLogs.toString();
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        String result = futures.stream()
+                .map(CompletableFuture::join)
+                .filter(s -> s != null && !s.isEmpty())
+                .collect(Collectors.joining("\n"));
+        log.info("Fetched {} bytes of logs from {} pods", result.length(), pods.size());
+        return result;
     }
+
+    // Hard cap: never fetch more than this many seconds of history in one call.
+    // Prevents GB-scale reads on long-running pods when no timeRange is specified.
+    private static final int DEFAULT_LOG_WINDOW_SECONDS = 60 * 60; // 1 hour
 
     private String fetchContainerLogs(KubernetesClient client, String namespace,
                                        String podName, String containerName, Integer timeRangeMinutes) {
         try {
-            log.debug("Fetching logs: timeRangeMinutes={}", timeRangeMinutes != null ? timeRangeMinutes : "ALL");
+            int windowSeconds = (timeRangeMinutes != null && timeRangeMinutes > 0)
+                    ? timeRangeMinutes * 60
+                    : DEFAULT_LOG_WINDOW_SECONDS;
 
-            var podResource = client.pods()
+            log.debug("Fetching logs: pod={} container={} windowSeconds={}", podName, containerName, windowSeconds);
+
+            String logs = client.pods()
                     .inNamespace(namespace)
                     .withName(podName)
-                    .inContainer(containerName);
-
-            // null or 0 = fetch all available logs (no sinceSeconds filter)
-            String logs = (timeRangeMinutes != null && timeRangeMinutes > 0)
-                    ? podResource.sinceSeconds(timeRangeMinutes * 60).getLog()
-                    : podResource.getLog();
+                    .inContainer(containerName)
+                    .sinceSeconds(windowSeconds)
+                    .getLog();
 
             if (logs == null) {
                 log.warn("Null logs returned for container: {}", containerName);
@@ -413,19 +430,27 @@ public class JourneyLogService {
         return envDetails;
     }
 
-    private KubernetesClient createKubernetesClient(String envName) {
-        OpenShiftProperties.EnvDetails envDetails = openShiftProperties.getEnvironments().get(envName);
-        String host = hostConfig.getHost(envDetails.getVersion(), envDetails.getCluster(), envDetails.getRealm());
-        String token = tokenService.getTokenValue(envDetails.getSystemAccount());
-        log.debug("Creating Kubernetes client for host: {}", host);
-        Config config = new ConfigBuilder()
-                .withMasterUrl(host)
-                .withOauthToken(token)
-                .withTrustCerts(true)
-                .withConnectionTimeout(30000)
-                .withRequestTimeout(30000)
-                .build();
-        return new KubernetesClientBuilder().withConfig(config).build();
+    /**
+     * Returns a cached KubernetesClient for the given environment.
+     * Creating a client is expensive (OkHttp pool + TLS handshake), so we keep one
+     * per environment for the lifetime of the process. Tokens are long-lived service
+     * account tokens in OpenShift; if a token rotates, restart the app to clear the cache.
+     */
+    private KubernetesClient getOrCreateClient(String envName) {
+        return clientCache.computeIfAbsent(envName, env -> {
+            OpenShiftProperties.EnvDetails envDetails = openShiftProperties.getEnvironments().get(env);
+            String host = hostConfig.getHost(envDetails.getVersion(), envDetails.getCluster(), envDetails.getRealm());
+            String token = tokenService.getTokenValue(envDetails.getSystemAccount());
+            log.info("Creating (and caching) Kubernetes client for env={} host={}", env, host);
+            Config config = new ConfigBuilder()
+                    .withMasterUrl(host)
+                    .withOauthToken(token)
+                    .withTrustCerts(true)
+                    .withConnectionTimeout(30000)
+                    .withRequestTimeout(60000)
+                    .build();
+            return new KubernetesClientBuilder().withConfig(config).build();
+        });
     }
 
     // -------------------------------------------------------------------------

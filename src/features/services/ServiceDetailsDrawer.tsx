@@ -151,21 +151,23 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
           </div>
         )}
 
-        {pods[0]?.containers?.length > 0 && (
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold mb-2 text-slate-300">Container Versions</h3>
-            <div className="space-y-1">
-              {pods[0].containers.map((c, i) => (
-                <div key={i} className="flex justify-between text-xs bg-slate-800 px-3 py-2 rounded">
-                  <span className="text-slate-300">{c.name}</span>
-                  <span className="text-slate-400 font-mono">
-                    {c.image?.split(":")[1] || "N/A"}
-                  </span>
-                </div>
-              ))}
+        {(() => {
+          const currentVersions = currentContainerVersions(service, pods)
+          if (Object.keys(currentVersions).length === 0) return null
+          return (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold mb-2 text-slate-300">Container Versions</h3>
+              <div className="space-y-1">
+                {Object.entries(currentVersions).map(([name, version]) => (
+                  <div key={name} className="flex justify-between text-xs bg-slate-800 px-3 py-2 rounded">
+                    <span className="text-slate-300">{name}</span>
+                    <span className="text-slate-400 font-mono">{version}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         <div className="mb-6">
           <h3 className="text-sm font-semibold mb-2 text-slate-300">Health Status</h3>
@@ -216,6 +218,32 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
       </div>
     </div>
   )
+}
+
+function currentContainerVersions(service: Service, pods: Pod[]): Record<string, string> {
+  if (service.containerVersions && Object.keys(service.containerVersions).length > 0) {
+    return service.containerVersions
+  }
+  const out: Record<string, string> = {}
+  for (const c of pods[0]?.containers ?? []) {
+    out[c.name] = extractImageVersion(c.image)
+  }
+  return out
+}
+
+function extractImageVersion(image?: string): string {
+  if (!image) return "N/A"
+  const at = image.indexOf("@")
+  if (at > 0) {
+    const digest = image.slice(at + 1)
+    const colon = digest.indexOf(":")
+    const hash = colon > 0 ? digest.slice(colon + 1) : digest
+    return "sha256:" + hash.slice(0, 12)
+  }
+  const lastColon = image.lastIndexOf(":")
+  const lastSlash = image.lastIndexOf("/")
+  if (lastColon < 0 || lastColon < lastSlash) return "latest"
+  return image.slice(lastColon + 1)
 }
 
 function formatDateTime(iso: string): string {

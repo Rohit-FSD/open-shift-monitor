@@ -5,6 +5,8 @@ import com.yourorg.deploy.dto.SuccessRateResponse;
 import com.yourorg.deploy.model.FilterDefinition;
 import com.yourorg.deploy.model.ParsedLogEntry;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,12 +45,16 @@ public class LogAnalyticsService {
 
     private String fetchRawLogs(SuccessRateConfig config) {
         if (config.getServiceNames() != null && !config.getServiceNames().isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            for (String svc : config.getServiceNames()) {
-                sb.append(journeyLogService.getServiceLogs(
-                        config.getEnvName(), svc, config.getTimeRangeMinutes())).append("\n");
-            }
-            return sb.toString();
+            // Fetch all services in parallel — each getServiceLogs call is independent.
+            List<CompletableFuture<String>> futures = config.getServiceNames().stream()
+                    .map(svc -> CompletableFuture.supplyAsync(() ->
+                            journeyLogService.getServiceLogs(
+                                    config.getEnvName(), svc, config.getTimeRangeMinutes())))
+                    .collect(Collectors.toList());
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            return futures.stream()
+                    .map(CompletableFuture::join)
+                    .collect(Collectors.joining("\n"));
         }
         return journeyLogService.getAllLogsForEnvironment(
                 config.getEnvName(), config.getTimeRangeMinutes());

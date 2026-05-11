@@ -49,8 +49,17 @@ const ServicesTable = ({ services, env }: Props) => {
 
   const getVersion = (image: string) => {
     if (!image) return "N/A"
-    const parts = image.split(":")
-    return parts[1] || "N/A"
+    const at = image.indexOf("@")
+    if (at > 0) {
+      const digest = image.slice(at + 1)
+      const colon = digest.indexOf(":")
+      const hash = colon > 0 ? digest.slice(colon + 1) : digest
+      return "sha256:" + hash.slice(0, 12)
+    }
+    const lastColon = image.lastIndexOf(":")
+    const lastSlash = image.lastIndexOf("/")
+    if (lastColon < 0 || lastColon < lastSlash) return "latest"
+    return image.slice(lastColon + 1)
   }
 
   const renderContainerVersions = (service: Service) => {
