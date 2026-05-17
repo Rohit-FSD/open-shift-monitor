@@ -244,11 +244,11 @@ const SuccessRatePage = () => {
                     <option key={env} value={env}>{env}</option>
                   ))}
                 </select>
-                {selectedEnv && envData?.[selectedEnv] && (
+                {selectedEnv && envData && envData[selectedEnv] && (
                   <div className="mt-2 text-xs text-slate-500 space-y-0.5">
-                    <div>Cluster: {envData[selectedEnv].cluster}</div>
-                    <div>Namespace: {envData[selectedEnv].namespace}</div>
-                    <div>Realm: {envData[selectedEnv].realm}</div>
+                    <div>Cluster: {(envData[selectedEnv] as any).cluster}</div>
+                    <div>Namespace: {(envData[selectedEnv] as any).namespace}</div>
+                    <div>Realm: {(envData[selectedEnv] as any).realm}</div>
                   </div>
                 )}
               </Panel>
