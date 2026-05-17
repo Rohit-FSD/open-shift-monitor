@@ -562,6 +562,12 @@ public class DownstreamCallParserService {
             this.boundary = boundary;
         }
 
+        String resolvedRequestBody() {
+            if (requestBody != null) return requestBody;
+            if ("GET".equalsIgnoreCase(httpMethod)) return "No request body (GET)";
+            return "Request body not captured in logs";
+        }
+
         void appendBody(String line) {
             if (capturing == Capture.REQUEST) {
                 String target = (requestBody == null ? "" : requestBody) + "\n" + line;
@@ -604,7 +610,7 @@ public class DownstreamCallParserService {
                     .requestTimestamp(requestTimestamp)
                     .method(methodOut)
                     .url(finalUrl)
-                    .requestBody(requestBody != null ? requestBody : "Request body not captured in logs")
+                    .requestBody(resolvedRequestBody())
                     .responseBody(responseBody != null ? responseBody : "Response body not captured in logs")
                     .callStatus(status)
                     .build();
