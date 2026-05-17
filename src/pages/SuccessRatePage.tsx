@@ -638,7 +638,7 @@ const KpiCard = ({ label, value, color }: { label: string; value: string; color:
 )
 
 const CalcInfoModal = ({ onClose }: { onClose: () => void }) => {
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
