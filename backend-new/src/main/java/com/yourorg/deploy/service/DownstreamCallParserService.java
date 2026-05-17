@@ -186,6 +186,14 @@ public class DownstreamCallParserService {
 
         if (rawLogs == null || rawLogs.isEmpty()) return List.of();
 
+        // Fast pre-scan: if the searchId doesn't appear anywhere in the raw text,
+        // skip full line-by-line parsing entirely (saves CPU on pods that don't
+        // carry this correlation ID / TID at all).
+        if (searchId != null && !rawLogs.toLowerCase().contains(searchId.toLowerCase())) {
+            log.debug("searchId={} not found in pod={} logs — skipping parse", searchId, podName);
+            return List.of();
+        }
+
         List<ParsedLogEntry> allEntries;
         try {
             allEntries = logParserService.parseLogLines(rawLogs);
@@ -194,8 +202,10 @@ public class DownstreamCallParserService {
             return List.of();
         }
 
+        // Pre-lowercase once to avoid repeated toLowerCase() in matchesSearchId per entry.
+        final String sidLower = searchId != null ? searchId.toLowerCase() : null;
         List<ParsedLogEntry> relevant = allEntries.stream()
-                .filter(e -> matchesSearchId(e, searchId))
+                .filter(e -> matchesSearchId(e, sidLower))
                 .collect(Collectors.toList());
 
         if (relevant.isEmpty()) return List.of();
@@ -478,22 +488,21 @@ public class DownstreamCallParserService {
     }
 
     /**
-     * Match searchId against structured fields first (exact), then fall back
-     * to rawLine.contains so we never miss a line where the TID/correlationId
-     * appears in the message body but wasn't promoted into a structured field
-     * (e.g. async threads, shortened hex correlation IDs in the bracket).
+     * @param sidLower searchId already lowercased by the caller — avoids per-entry toLowerCase().
+     *
+     * Matches structured fields first (exact, case-insensitive), then falls back to
+     * rawLine.contains to catch lines where the TID/correlationId appears in the
+     * message body but wasn't promoted into a structured field (async threads,
+     * shortened hex correlation IDs in the bracket, etc.).
      */
-    private boolean matchesSearchId(ParsedLogEntry e, String searchId) {
-        if (searchId == null) return false;
-        String sid = searchId.toLowerCase();
-        if (sid.equalsIgnoreCase(e.getCorrelationId())
-                || sid.equalsIgnoreCase(e.getTid())) return true;
+    private boolean matchesSearchId(ParsedLogEntry e, String sidLower) {
+        if (sidLower == null) return false;
+        if (sidLower.equalsIgnoreCase(e.getCorrelationId())
+                || sidLower.equalsIgnoreCase(e.getTid())) return true;
         if (e.getDerivedFields() != null
-                && sid.equalsIgnoreCase(e.getDerivedFields().get("callGroupId"))) return true;
-        // Fallback: the searchId appears somewhere in the raw log line
-        // (covers cases where TID is in the message body or bracket format differs).
+                && sidLower.equalsIgnoreCase(e.getDerivedFields().get("callGroupId"))) return true;
         return e.getRawLine() != null
-                && e.getRawLine().toLowerCase().contains(sid);
+                && e.getRawLine().toLowerCase().contains(sidLower);
     }
 
     /** callGroupId → correlationId → tid → thread. */
