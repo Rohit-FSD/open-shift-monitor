@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Calendar,
   FileSearch,
-  Filter,
   TrendingUp,
   KeyRound,
   UserCircle,
@@ -25,7 +24,7 @@ const Sidebar = () => {
   const handleRoleChange = (newRole: AppRole) => {
     setRole(newRole)
     // If switching away from PM and on a PM-only page, redirect to dashboard
-    if (newRole !== "PROJECT_MANAGER" && (location.pathname === "/filters" || location.pathname === "/success-rate" || location.pathname === "/vault")) {
+    if (newRole !== "PROJECT_MANAGER" && (location.pathname === "/success-rate" || location.pathname === "/vault")) {
       navigate("/")
     }
   }
@@ -55,9 +54,6 @@ const Sidebar = () => {
             <div className="px-3 py-1 text-[10px] text-slate-500 uppercase tracking-widest">
               Project Manager
             </div>
-
-            <SidebarItem icon={<Filter size={16} />} label="Filters"
-              active={at("/filters")} onClick={() => navigate("/filters")} />
 
             <SidebarItem icon={<TrendingUp size={16} />} label="Success Rate"
               active={at("/success-rate")} onClick={() => navigate("/success-rate")} />

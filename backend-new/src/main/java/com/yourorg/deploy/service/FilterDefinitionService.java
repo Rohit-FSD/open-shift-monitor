@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,7 @@ public class FilterDefinitionService {
         return cache.get(id);
     }
 
+    @Cacheable(value = "filterList", key = "T(java.lang.String).valueOf(#activeOnly) + ':' + (#category?.name() ?: 'ALL')")
     public List<FilterDefinition> list(boolean activeOnly, FilterDefinition.FilterCategory category) {
         return cache.values().stream()
                 .filter(f -> !activeOnly || f.isActive())
