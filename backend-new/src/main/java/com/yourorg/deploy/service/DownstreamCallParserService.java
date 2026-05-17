@@ -478,17 +478,22 @@ public class DownstreamCallParserService {
     }
 
     /**
-     * Match searchId against structured fields only — no message.contains()
-     * fallback. correlationId is promoted from an embedded UUID when the
-     * logger bracket is empty (see LogParserService.tryAppLog), so equality
-     * is sufficient.
+     * Match searchId against structured fields first (exact), then fall back
+     * to rawLine.contains so we never miss a line where the TID/correlationId
+     * appears in the message body but wasn't promoted into a structured field
+     * (e.g. async threads, shortened hex correlation IDs in the bracket).
      */
     private boolean matchesSearchId(ParsedLogEntry e, String searchId) {
         if (searchId == null) return false;
-        if (searchId.equalsIgnoreCase(e.getCorrelationId())
-                || searchId.equalsIgnoreCase(e.getTid())) return true;
-        return e.getDerivedFields() != null
-                && searchId.equalsIgnoreCase(e.getDerivedFields().get("callGroupId"));
+        String sid = searchId.toLowerCase();
+        if (sid.equalsIgnoreCase(e.getCorrelationId())
+                || sid.equalsIgnoreCase(e.getTid())) return true;
+        if (e.getDerivedFields() != null
+                && sid.equalsIgnoreCase(e.getDerivedFields().get("callGroupId"))) return true;
+        // Fallback: the searchId appears somewhere in the raw log line
+        // (covers cases where TID is in the message body or bracket format differs).
+        return e.getRawLine() != null
+                && e.getRawLine().toLowerCase().contains(sid);
     }
 
     /** callGroupId → correlationId → tid → thread. */
