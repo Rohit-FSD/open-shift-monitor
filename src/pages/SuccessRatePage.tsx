@@ -5,8 +5,8 @@ import Navbar from "../components/layout/Navbar"
 import useFetch from "../hooks/useFetch"
 import { useRole } from "../context/RoleContext"
 import {
-  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid,
   BarChart, Bar,
 } from "recharts"
 
@@ -97,7 +97,7 @@ const SuccessRatePage = () => {
   const [result, setResult] = useState<SuccessRateResponse | null>(null)
   const [calculating, setCalculating] = useState(false)
   const [calcError, setCalcError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"overview" | "breakdown" | "timeline" | "logs">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "breakdown" | "logs">("overview")
   const [showCalcInfo, setShowCalcInfo] = useState(false)
 
   const { data: envData } = useFetch<Record<string, any>>("http://localhost:8080/api/openshift/environments")
@@ -180,21 +180,6 @@ const SuccessRatePage = () => {
     pct: Number(c.percentage?.toFixed(1) ?? 0),
     fill: categoryColor(c.category, c.color),
     category: c.category,
-  }))
-
-  const timelineData = (result?.timeSeries ?? []).map(p => ({
-    time: (() => {
-      try {
-        const d = new Date(p.timestamp)
-        return timeRange <= 1440
-          ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-          : d.toLocaleDateString([], { month: "2-digit", day: "2-digit" })
-      } catch { return p.timestamp }
-    })(),
-    successRate: Number(p.successRate?.toFixed(2) ?? 0),
-    success: p.successCount,
-    failure: p.failureCount,
-    total: p.totalAttempts,
   }))
 
   const rate = result?.overallSuccessRate ?? 0
@@ -344,7 +329,7 @@ const SuccessRatePage = () => {
 
                   {/* ── tabs ────────────────────────────────────────────── */}
                   <div className="flex gap-1 bg-slate-900 border border-slate-700 rounded-lg p-1">
-                    {(["overview", "breakdown", "timeline", "logs"] as const).map(tab => (
+                    {(["overview", "breakdown", "logs"] as const).map(tab => (
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -510,65 +495,6 @@ const SuccessRatePage = () => {
 
                   {activeTab === "breakdown" && breakdownData.length === 0 && (
                     <Placeholder text="No category breakdown data available" />
-                  )}
-
-                  {/* ── TIMELINE tab ────────────────────────────────────── */}
-                  {activeTab === "timeline" && timelineData.length > 0 && (
-                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-5 space-y-5">
-                      <div className="text-sm font-medium text-slate-300">Success Rate Over Time</div>
-
-                      {/* Area chart — success rate % */}
-                      <div style={{ height: 200 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={timelineData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                            <defs>
-                              <linearGradient id="successGrad" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                            <XAxis dataKey="time" tick={{ fill: "#94a3b8", fontSize: 10 }} tickLine={false} axisLine={false} />
-                            <YAxis domain={[0, 100]} tickFormatter={v => `${v}%`}
-                              tick={{ fill: "#94a3b8", fontSize: 10 }} tickLine={false} axisLine={false} />
-                            <Tooltip
-                              contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-                              itemStyle={{ color: "#cbd5e1" }}
-                              formatter={(v: number) => [`${v.toFixed(2)}%`, "Success Rate"]}
-                            />
-                            <Area
-                              type="monotone" dataKey="successRate"
-                              stroke="#22c55e" strokeWidth={2}
-                              fill="url(#successGrad)"
-                              dot={false} activeDot={{ r: 4 }}
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      {/* Stacked bar — success vs failure counts */}
-                      <div className="text-xs text-slate-400 mb-1">Success vs Failure Counts</div>
-                      <div style={{ height: 160 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={timelineData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                            <XAxis dataKey="time" tick={{ fill: "#94a3b8", fontSize: 10 }} tickLine={false} axisLine={false} />
-                            <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} tickLine={false} axisLine={false} />
-                            <Tooltip
-                              contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-                              itemStyle={{ color: "#cbd5e1" }}
-                            />
-                            <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-                            <Bar dataKey="success" name="Success" stackId="a" fill="#22c55e" radius={[0, 0, 0, 0]} />
-                            <Bar dataKey="failure" name="Failure" stackId="a" fill="#ef4444" radius={[3, 3, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === "timeline" && timelineData.length === 0 && (
-                    <Placeholder text="No time-series data — try a wider time range or groupBy granularity" />
                   )}
 
                   {/* ── LOGS tab ─────────────────────────────────────────── */}
