@@ -604,8 +604,8 @@ public class DownstreamCallParserService {
                     .requestTimestamp(requestTimestamp)
                     .method(methodOut)
                     .url(finalUrl)
-                    .requestBody(requestBody)
-                    .responseBody(responseBody)
+                    .requestBody(requestBody != null ? requestBody : "Request body not captured in logs")
+                    .responseBody(responseBody != null ? responseBody : "Response body not captured in logs")
                     .callStatus(status)
                     .build();
         }
