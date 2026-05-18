@@ -39,12 +39,6 @@ interface Props {
   onClose: () => void
 }
 
-const healthStyle: Record<string, string> = {
-  HEALTHY: "bg-green-500/20 text-green-400",
-  DEGRADED: "bg-orange-500/20 text-orange-400",
-  DOWN: "bg-red-500/20 text-red-400",
-}
-
 const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
   const pods: Pod[] = service?.pods || []
 
@@ -56,17 +50,6 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
     }
   }, [env, service?.name, analyze])
 
-  const deriveStatus = (): string => {
-    if (!service.replicas || service.readyReplicas === 0) return "DOWN"
-    if (service.readyReplicas < service.replicas) return "DEGRADED"
-    const logFailures = (data?.applicationErrors?.length ?? 0) +
-      (data?.podFailures?.length ?? 0) +
-      (data?.downstreamFailures?.length ?? 0)
-    if (logFailures > 0) return "DEGRADED"
-    return "HEALTHY"
-  }
-
-  const status = deriveStatus()
   const applicationErrors = data?.applicationErrors || []
   const podFailures = data?.podFailures || []
   const downstreamFailures = data?.downstreamFailures || []
@@ -169,28 +152,28 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
           )
         })()}
 
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold mb-2 text-slate-300">Health Status</h3>
-          <div className={`p-3 rounded-md text-sm font-medium ${healthStyle[status] ?? "bg-slate-800 text-slate-400"}`}>
-            {status}
-          </div>
-        </div>
-
         {pods.length > 0 && (
           <div className="mb-6">
-            <h3 className="text-sm font-semibold mb-2 text-slate-300">Pod Details</h3>
-            {pods.map((p, i) => (
-              <div key={i} className="bg-slate-800 rounded p-3 mb-2 text-xs">
-                <div className="text-white font-mono mb-1">{p.name}</div>
-                <div className="text-slate-400">Node: {p.node}</div>
-                <div className="text-slate-400">Restarts: {p.restarts}</div>
-                {p.startedAt && (
-                  <div className="text-slate-400">
-                    Started: {timeAgo(p.startedAt)}
+            <h3 className="text-sm font-semibold mb-2 text-slate-300">Pod Status</h3>
+            {pods.map((p, i) => {
+              const running = i < service.readyReplicas
+              return (
+                <div key={i} className="bg-slate-800 rounded p-3 mb-2 text-xs">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${running ? "bg-green-400" : "bg-red-400"}`} />
+                    <span className="text-white font-mono truncate">{p.name}</span>
+                    <span className={`ml-auto text-[10px] font-medium ${running ? "text-green-400" : "text-red-400"}`}>
+                      {running ? "Running" : "Not Running"}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="text-slate-400 pl-4">Node: {p.node}</div>
+                  <div className="text-slate-400 pl-4">Restarts: {p.restarts}</div>
+                  {p.startedAt && (
+                    <div className="text-slate-400 pl-4">Started: {timeAgo(p.startedAt)}</div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 

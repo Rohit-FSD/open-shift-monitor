@@ -1,5 +1,4 @@
 import Card from "../../components/common/Card"
-import StatusBadge from "../../components/common/StatusBadge"
 import { useState } from "react"
 import ServiceDetailsDrawer from "../services/ServiceDetailsDrawer"
 
@@ -92,7 +91,7 @@ const ServicesTable = ({ services, env }: Props) => {
               <th className="text-left">Container Versions</th>
               <th className="text-left">Pods</th>
               <th className="text-left">Uptime</th>
-              <th className="text-left">Health Status</th>
+              <th className="text-left">Pod Status</th>
             </tr>
           </thead>
 
@@ -146,7 +145,30 @@ const ServicesTable = ({ services, env }: Props) => {
                   </td>
 
                   <td>
-                    <StatusBadge status={service.status} />
+                    <div className="flex flex-wrap gap-1">
+                      {service.pods && service.pods.length > 0 ? (
+                        service.pods.map((pod, pi) => {
+                          const running = pi < service.readyReplicas
+                          return (
+                            <span
+                              key={pi}
+                              title={pod.name + (running ? " · Running" : " · Not Running")}
+                              className={`inline-block w-2.5 h-2.5 rounded-full ${running ? "bg-green-400" : "bg-red-400"}`}
+                            />
+                          )
+                        })
+                      ) : (
+                        Array.from({ length: service.replicas }).map((_, pi) => (
+                          <span
+                            key={pi}
+                            className={`inline-block w-2.5 h-2.5 rounded-full ${pi < service.readyReplicas ? "bg-green-400" : "bg-red-400"}`}
+                          />
+                        ))
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">
+                      {service.readyReplicas}/{service.replicas} running
+                    </div>
                   </td>
 
                 </tr>
