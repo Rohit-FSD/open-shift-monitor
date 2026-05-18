@@ -11,6 +11,7 @@ interface Pod {
   name: string
   node: string
   restarts: number
+  status?: string   // phase from Kubernetes: "Running", "Pending", "Failed", etc.
   containers: Container[]
   created?: string
   startedAt?: string
@@ -156,14 +157,17 @@ const ServiceDetailsDrawer = ({ service, env, onClose }: Props) => {
           <div className="mb-6">
             <h3 className="text-sm font-semibold mb-2 text-slate-300">Pod Status</h3>
             {pods.map((p, i) => {
-              const running = i < service.readyReplicas
+              const running = p.status
+                ? p.status.toLowerCase() === "running"
+                : i < service.readyReplicas
+              const statusLabel = p.status ?? (running ? "Running" : "Not Running")
               return (
                 <div key={i} className="bg-slate-800 rounded p-3 mb-2 text-xs">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${running ? "bg-green-400" : "bg-red-400"}`} />
                     <span className="text-white font-mono truncate">{p.name}</span>
                     <span className={`ml-auto text-[10px] font-medium ${running ? "text-green-400" : "text-red-400"}`}>
-                      {running ? "Running" : "Not Running"}
+                      {statusLabel}
                     </span>
                   </div>
                   <div className="text-slate-400 pl-4">Node: {p.node}</div>

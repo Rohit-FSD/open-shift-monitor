@@ -11,6 +11,7 @@ interface Pod {
   name: string
   node: string
   restarts: number
+  status?: string   // phase from Kubernetes: "Running", "Pending", "Failed", etc.
   containers: Container[]
 }
 
@@ -148,11 +149,13 @@ const ServicesTable = ({ services, env }: Props) => {
                     <div className="flex flex-wrap gap-1">
                       {service.pods && service.pods.length > 0 ? (
                         service.pods.map((pod, pi) => {
-                          const running = pi < service.readyReplicas
+                          const running = pod.status
+                            ? pod.status.toLowerCase() === "running"
+                            : pi < service.readyReplicas
                           return (
                             <span
                               key={pi}
-                              title={pod.name + (running ? " · Running" : " · Not Running")}
+                              title={`${pod.name} · ${pod.status ?? (running ? "Running" : "Not Running")}`}
                               className={`inline-block w-2.5 h-2.5 rounded-full ${running ? "bg-green-400" : "bg-red-400"}`}
                             />
                           )
