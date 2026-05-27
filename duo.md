@@ -1,139 +1,324 @@
-You are a senior Java backend engineer working on a Spring Boot 
-corporate banking application (bcp-css-service at Barclays).
+You are a senior Java backend engineer working on a 
+Spring Boot corporate banking application.
 
-I need you to generate a spec.md file for our AOP-based 
-centralized logging feature, following EXACTLY this structure 
-and quality standard:
+Generate a spec.md for AOP Centralized Logging feature.
 
-## REQUIRED STRUCTURE (follow this order strictly)
+Follow EXACTLY this structure — nothing more, nothing less:
+
+---
+
+## REQUIRED STRUCTURE
 
 ### 1. Feature Specification Header
 - Feature name: AOP Centralized Logging
-- Feature Branch name
-- Created date, Status, Input source
+- Feature Branch: feature/aop-centralized-logging
+- Status: In Progress
+- Input: POC analysis findings
 
 ### 2. Problem Statement
-- Why AOP logging is needed
-- What risk exists without it
-- What layers are affected (REST, BEM, CloudIT)
+- No centralized logging exists today
+- Log statements are scattered across REST, BEM, CloudIT
+- PII data is at risk of appearing in logs
+- No consistent correlation ID tracking across layers
 
-### 3. Clarifications (Q&A format)
-Answer these as resolved questions:
-- Q: What layers does AOP cover?
-- Q: Does PII masking apply before or after logging?
-- Q: Is feature flag hot-reloadable?
-- Q: What happens if AOP is disabled?
-- Q: What is default log level in PROD?
+### 3. Actors Table
+| Actor | Role | How They Interact |
+- bcp-css-service → caller across all layers
+- AOP Logging Aspect → intercepts all method calls
+- Kibana/ELK → consumes structured log output
+- Spring Cloud Config → controls feature flags at runtime
+- Upstream consumers → indirectly affected, 
+  should see no change in behaviour
 
-### 4. Actors Table
-Generate a table with columns: Actor | Role | How They Interact
-Actors to include:
-- bcp-css-service (the calling service)
-- AOP Logging Aspect (the interceptor)
-- Kibana/ELK (log consumer)
-- Downstream services (BEM, ODS, CloudIT)
-- Upstream consumers (UI, other services)
+### 4. User Scenarios & Journeys
 
-### 5. User Scenarios & Journeys
-Write 4 user stories with Priority (P1/P2):
+Write EXACTLY these 4 stories:
 
-Story 1 (P1): REST Layer Entry/Exit Logging
-Story 2 (P1): PII Masking on All Log Output  
-Story 3 (P1): Feature Flag Toggle Behavior
-Story 4 (P2): Payment Journey Logging
+#### User Story 1 — Feature Flag Configuration (P1)
+Narrative: 
+Logging behaviour must be fully controllable via 
+config flags without redeployment.
 
-For EACH story include:
-- Narrative (what happens and why)
-- Why this priority
-- Independent Test (how to verify in isolation)
-- Acceptance Scenarios (Given/When/Then format, 
-  minimum 2 scenarios each)
+Acceptance Scenarios (Given/When/Then):
+1. Given logging.aop.enabled=false, 
+   when any method is called, 
+   then no AOP logging occurs at any layer
 
-### 6. Error & Edge Case Scenarios Table
-Columns: Scenario | Expected Behaviour
-Cover these cases:
-- AOP disabled via flag
-- PII field found in payload
-- Null response from downstream
-- Stack trace toggle off
-- Correlation ID missing
-- Payload exceeds size limit
-- BEM layer throws exception
+2. Given logging.aop.enabled=true, 
+   when any method is called, 
+   then entry/exit logged with method name, 
+   correlationId, execution time at INFO level
 
-### 7. Requirements
+3. Given logging.level.request=true, 
+   when a request comes in, 
+   then full request payload is logged at INFO level
 
-#### Functional Requirements (FR-001 to FR-008)
-- FR-001: Feature flag configuration (hot-reloadable)
-- FR-002: Entry logging for all configured layers
-- FR-003: Exit logging with execution time
-- FR-004: PII masking (last 4 chars visible, rest X)
-- FR-005: CorrelationId/PartyId/TrackingId extraction
-- FR-006: Payment journey specific logging
-- FR-007: JSON structured log format for Kibana
-- FR-008: Error logging with toggleable stack trace
+4. Given logging.level.request=false, 
+   when a request comes in, 
+   then only method signature is logged, 
+   no payload
 
-#### Data Requirements
-- Config properties needed:
-  logging.aop.enabled (default: true)
-  logging.level.request (default: false)
-  logging.level.response (default: false)
-  logging.pii.mask.debug-mode (default: false)
-- Fields that MUST be masked:
-  accountNumber, cardholderName, partyId, 
-  trackingId, paymentReference, identityToken
-- Fields safe to log:
-  correlationId, errorKey, methodName, 
-  executionTime, serviceId, environment
+5. Given logging.level.response=true, 
+   when response returns, 
+   then full response payload logged at INFO level
 
-#### External System Interactions Table
-Columns: System | Direction | What Data | Purpose
-Cover: BEM, REST endpoints, CloudIT, 
-       Kibana/ELK, Spring Cloud Config
+6. Given logging.level.response=false, 
+   when response returns, 
+   then only execution time logged, no payload
 
-### 8. PII & Sensitive Data Section
-- Confirm PII is present
-- List every field that must NOT appear in logs
-- State masking rule clearly
+7. Given logging.pii.mask.debug-mode=true AND 
+   logging.level.request=true, 
+   when payload contains PII, 
+   then PII fields are UNMASKED (debug only)
 
-### 9. Success Criteria (SC-001 to SC-006)
-- SC-001: All layers log entry/exit when flag=true
-- SC-002: No PII appears in any log output
-- SC-003: Feature flag toggle works without restart
-- SC-004: Execution time logged for every method
-- SC-005: Payment journey logs transactionRefNo
-- SC-006: JSON format valid and parseable by Kibana
+8. Given logging.pii.mask.debug-mode=false, 
+   when payload contains PII, 
+   then PII fields are always masked 
+   regardless of request/response flags
 
-### 10. Assumptions
-- Bullet list of what is assumed to be true
-Include: existing Kibana setup, Spring AOP available,
-         SLF4J+Logback in use, correlationId already 
-         in MDC context
+#### User Story 2 — Entry/Exit Logging (P1)
+Narrative:
+AOP aspect must intercept all methods across 
+REST, BEM and CloudIT layers and log entry 
+and exit consistently.
 
-### 11. Open Questions
-List 5 open questions in Q: / Answer: format
-covering: log retention, Kibana index naming, 
-          BEM layer pointcut scope, 
-          payload size limits, 
-          audit vs debug log separation
+Acceptance Scenarios:
+1. Given AOP is enabled, 
+   when a REST endpoint is called, 
+   then entry log contains: method name, 
+   correlationId, partyId, trackingId, 
+   serviceId, environment tag
 
-## TECH CONTEXT
-- Java 11+
-- Spring Boot 2.x
-- Spring AOP / AspectJ
-- SLF4J + Logback
-- Jackson for JSON
-- Spring Cloud Config for hot-reload
-- Kibana/ELK for log consumption
+2. Given AOP is enabled, 
+   when method completes, 
+   then exit log contains: method name, 
+   execution time in ms, response status
 
-## QUALITY RULES
-- Write every FR and SC with enough detail that 
-  a developer can code it without asking questions
-- Every acceptance scenario must be testable 
-  independently
-- Do not use vague language like "should work" — 
-  use "must", "will", "returns"
-- Flag default must always be SAFE (masking ON, 
-  payloads OFF in PROD)
+3. Given AOP is enabled on BEM layer, 
+   when BEM service method is invoked, 
+   then same entry/exit pattern applies 
+   as REST layer
+
+4. Given method throws an exception, 
+   when AOP intercepts it, 
+   then error log contains: error message, 
+   errorKey, correlationId and stack trace 
+   only if toggle is ON
+
+#### User Story 3 — PII Masking (P1)
+Narrative:
+All sensitive customer data must be masked 
+before any log statement is written. 
+This is a compliance requirement.
+
+Acceptance Scenarios:
+1. Given a response contains accountNumber, 
+   when logged, 
+   then only last 4 characters are visible, 
+   rest replaced with X
+
+2. Given a payload contains partyId, 
+   when logged at any level, 
+   then partyId is masked as XXXXXXXX1234
+
+3. Given identityToken is present in request, 
+   when logged, 
+   then token must NOT appear in any log output
+
+4. Given correlationId is present, 
+   when logged, 
+   then correlationId is NOT masked 
+   (safe to log in full)
+
+5. Given debug-mode=false (production default), 
+   when any payload is logged, 
+   then masking is enforced before log is written
+
+#### User Story 4 — Payment Journey Logging (P2)
+Narrative:
+Payment journey requires additional logging of 
+transaction reference and encoded payload for 
+audit and debugging purposes.
+
+Acceptance Scenarios:
+1. Given a payment request is processed, 
+   when AOP intercepts it, 
+   then transactionUniqueRefNo is logged
+
+2. Given payment payload exists, 
+   when logged, 
+   then payload is base64 encoded before logging
+
+3. Given BUILDER_END case is reached, 
+   when logged, 
+   then both exit log and entry log for 
+   next step are written
+
+---
+
+### 5. Functional Requirements
+
+FR-001: Provide logging.aop.enabled config 
+        (default: true) to enable/disable globally
+
+FR-002: Provide logging.level.request config 
+        (default: false) to toggle request payload logging
+
+FR-003: Provide logging.level.response config 
+        (default: false) to toggle response payload logging
+
+FR-004: Provide logging.pii.mask.debug-mode config 
+        (default: false) to control PII masking behaviour
+
+FR-005: All flags must be hot-reloadable via 
+        Spring Cloud Config or @RefreshScope
+
+FR-006: Invalid config values must fall back to 
+        secure defaults 
+        (masking ON, request/response logging OFF)
+
+FR-007: AOP must intercept entry and exit for 
+        REST, BEM and CloudIT layers
+
+FR-008: Execution time must be logged for 
+        every intercepted method
+
+FR-009: PII fields must be masked before any 
+        log statement is written — 
+        mask all but last 4 characters with X
+
+FR-010: CorrelationId, PartyId, TrackingId must 
+        be extracted and included in every log line
+
+FR-011: Payment journey must log 
+        transactionUniqueRefNo and base64 payload
+
+FR-012: Error logs must include errorKey and 
+        optionally stack trace based on toggle
+
+FR-013: All logs must be in strict JSON format 
+        consumable by Kibana
+
+---
+
+### 6. PII & Sensitive Data
+
+Confirm: YES — service handles customer PII
+
+Fields that MUST NOT appear in logs:
+- accountNumber
+- cardholderName / cardholderIdentifier  
+- partyId (must be masked)
+- trackingId (must be masked)
+- paymentReference
+- identityToken (must never appear)
+
+Fields SAFE to log:
+- correlationId
+- errorKey
+- methodName
+- executionTime
+- serviceId
+- environment
+
+Masking Rule:
+Show only last 4 characters, 
+replace rest with X.
+Example: XXXXXXXX6789
+
+---
+
+### 7. Success Criteria
+
+SC-001: All configured layers log entry/exit 
+        when logging.aop.enabled=true
+
+SC-002: No PII field appears in any log output 
+        when debug-mode=false
+
+SC-003: Feature flags toggle without 
+        application restart
+
+SC-004: Execution time is present in every 
+        exit log line
+
+SC-005: Payment journey logs 
+        transactionUniqueRefNo correctly
+
+SC-006: All log output is valid JSON 
+        parseable by Kibana
+
+---
+
+### 8. Assumptions
+
+- Spring AOP / AspectJ is available in the project
+- SLF4J + Logback is the existing logging framework
+- Kibana/ELK is already set up and consuming logs
+- correlationId is already available in MDC context
+- Spring Cloud Config is available for hot-reload
+- Existing logging must not be broken or removed
+
+---
+
+### 9. Error & Edge Case Scenarios
+
+| Scenario | Expected Behaviour |
+|---|---|
+| logging.aop.enabled=false | No AOP logging, existing logs unaffected |
+| PII field in payload | Masked before log written, never raw |
+| Null response from downstream | Exit log written with null noted, no exception |
+| Stack trace toggle=false | Error message logged, stack trace suppressed |
+| correlationId missing | Log written with UNKNOWN placeholder |
+| BEM layer throws exception | Error logged with errorKey and correlationId |
+| Invalid config value supplied | Falls back to secure default silently |
+
+---
+
+## CONFIG EXAMPLES TO INCLUDE
+
+# Production Default (safe)
+logging:
+  aop:
+    enabled: true
+  level:
+    request: false
+    response: false
+  pii:
+    mask:
+      debug-mode: false
+
+# Debug Incoming Requests Only
+logging:
+  aop:
+    enabled: true
+  level:
+    request: true
+    response: false
+  pii:
+    mask:
+      debug-mode: false
+
+# Full Debug (NON-PROD ONLY)
+logging:
+  aop:
+    enabled: true
+  level:
+    request: true
+    response: true
+  pii:
+    mask:
+      debug-mode: true
+
+---
+
+## RULES FOR GENERATION
+- Use "must" and "will" — never "should"
+- Every acceptance scenario must be 
+  independently testable
+- Do not add any section not listed above
+- Config defaults must always be 
+  production-safe
+- Keep language precise and technical
 
 Generate the complete spec.md now.
-
