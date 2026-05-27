@@ -1,77 +1,139 @@
 You are a senior Java backend engineer working on a Spring Boot 
-corporate banking application.
+corporate banking application (bcp-css-service at Barclays).
 
-I need you to follow a SPEC DRIVEN approach to implement 
-AOP-based centralized logging. This means:
-- First write the SPEC (what it should do)
-- Then write the PLAN (how to do it)
-- Then write TASKS (step by step execution)
-- Then write a CHECKLIST (for verification)
+I need you to generate a spec.md file for our AOP-based 
+centralized logging feature, following EXACTLY this structure 
+and quality standard:
 
-## PROJECT CONTEXT
-- Spring Boot application
-- Layers: REST, BEM, CloudIT
-- Existing Kibana/ELK logging setup
-- Payment Journey module exists
-- PII compliance is mandatory
+## REQUIRED STRUCTURE (follow this order strictly)
 
-## IMPLEMENTATION SCOPE (in order)
-1. Feature flag setup (enable/disable logging via config)
-2. AOP Aspect class (entry + exit logging for all layers)
-3. PII masking utility 
-   (mask all but last 4 chars, keep errorKey visible)
-4. CorrelationId + PartyId + TrackingId extraction
-5. REST layer integration + testing
-6. Extend to BEM and CloudIT layers
-7. Payment journey logging 
-   (transactionUniqueRefNo + base64 payload)
+### 1. Feature Specification Header
+- Feature name: AOP Centralized Logging
+- Feature Branch name
+- Created date, Status, Input source
 
-## ADDITIONAL FEATURES TO INCLUDE
-- Execution time per method
-- Downstream API call logging
-- Strict JSON log format for Kibana
-- Audit trail for state-changing operations
-- Log sanitization (prevent log injection)
-- Environment tag in every log line (DEV/UAT/PROD)
+### 2. Problem Statement
+- Why AOP logging is needed
+- What risk exists without it
+- What layers are affected (REST, BEM, CloudIT)
 
-## OUTPUT FORMAT
-Generate 4 files:
+### 3. Clarifications (Q&A format)
+Answer these as resolved questions:
+- Q: What layers does AOP cover?
+- Q: Does PII masking apply before or after logging?
+- Q: Is feature flag hot-reloadable?
+- Q: What happens if AOP is disabled?
+- Q: What is default log level in PROD?
 
-### spec.md
-- What each feature MUST do
-- Acceptance criteria for each point
-- Edge cases to handle
+### 4. Actors Table
+Generate a table with columns: Actor | Role | How They Interact
+Actors to include:
+- bcp-css-service (the calling service)
+- AOP Logging Aspect (the interceptor)
+- Kibana/ELK (log consumer)
+- Downstream services (BEM, ODS, CloudIT)
+- Upstream consumers (UI, other services)
 
-### plan.md
-- Architecture decisions
-- Class structure
-- Dependencies needed
-- Sequence of implementation
+### 5. User Scenarios & Journeys
+Write 4 user stories with Priority (P1/P2):
 
-### tasks.md
-- Granular step by step tasks
-- Each task should be independently testable
-- Estimated effort per task (S/M/L)
+Story 1 (P1): REST Layer Entry/Exit Logging
+Story 2 (P1): PII Masking on All Log Output  
+Story 3 (P1): Feature Flag Toggle Behavior
+Story 4 (P2): Payment Journey Logging
 
-### checklist.md
-- Verification points after each task
-- Test scenarios
-- PII masking validation cases
-- Performance benchmarks
+For EACH story include:
+- Narrative (what happens and why)
+- Why this priority
+- Independent Test (how to verify in isolation)
+- Acceptance Scenarios (Given/When/Then format, 
+  minimum 2 scenarios each)
 
-## CONSTRAINTS
-- Do NOT break existing logging
-- Feature flag must default to FALSE in PROD
-- PII masking must work before any log is written
-- All logs must be in JSON format
-- Stack trace printing must be toggleable
+### 6. Error & Edge Case Scenarios Table
+Columns: Scenario | Expected Behaviour
+Cover these cases:
+- AOP disabled via flag
+- PII field found in payload
+- Null response from downstream
+- Stack trace toggle off
+- Correlation ID missing
+- Payload exceeds size limit
+- BEM layer throws exception
 
-## TECH STACK
+### 7. Requirements
+
+#### Functional Requirements (FR-001 to FR-008)
+- FR-001: Feature flag configuration (hot-reloadable)
+- FR-002: Entry logging for all configured layers
+- FR-003: Exit logging with execution time
+- FR-004: PII masking (last 4 chars visible, rest X)
+- FR-005: CorrelationId/PartyId/TrackingId extraction
+- FR-006: Payment journey specific logging
+- FR-007: JSON structured log format for Kibana
+- FR-008: Error logging with toggleable stack trace
+
+#### Data Requirements
+- Config properties needed:
+  logging.aop.enabled (default: true)
+  logging.level.request (default: false)
+  logging.level.response (default: false)
+  logging.pii.mask.debug-mode (default: false)
+- Fields that MUST be masked:
+  accountNumber, cardholderName, partyId, 
+  trackingId, paymentReference, identityToken
+- Fields safe to log:
+  correlationId, errorKey, methodName, 
+  executionTime, serviceId, environment
+
+#### External System Interactions Table
+Columns: System | Direction | What Data | Purpose
+Cover: BEM, REST endpoints, CloudIT, 
+       Kibana/ELK, Spring Cloud Config
+
+### 8. PII & Sensitive Data Section
+- Confirm PII is present
+- List every field that must NOT appear in logs
+- State masking rule clearly
+
+### 9. Success Criteria (SC-001 to SC-006)
+- SC-001: All layers log entry/exit when flag=true
+- SC-002: No PII appears in any log output
+- SC-003: Feature flag toggle works without restart
+- SC-004: Execution time logged for every method
+- SC-005: Payment journey logs transactionRefNo
+- SC-006: JSON format valid and parseable by Kibana
+
+### 10. Assumptions
+- Bullet list of what is assumed to be true
+Include: existing Kibana setup, Spring AOP available,
+         SLF4J+Logback in use, correlationId already 
+         in MDC context
+
+### 11. Open Questions
+List 5 open questions in Q: / Answer: format
+covering: log retention, Kibana index naming, 
+          BEM layer pointcut scope, 
+          payload size limits, 
+          audit vs debug log separation
+
+## TECH CONTEXT
 - Java 11+
 - Spring Boot 2.x
 - Spring AOP / AspectJ
 - SLF4J + Logback
 - Jackson for JSON
+- Spring Cloud Config for hot-reload
+- Kibana/ELK for log consumption
 
-Start with spec.md first and wait for my 
-approval before moving to plan.md
+## QUALITY RULES
+- Write every FR and SC with enough detail that 
+  a developer can code it without asking questions
+- Every acceptance scenario must be testable 
+  independently
+- Do not use vague language like "should work" — 
+  use "must", "will", "returns"
+- Flag default must always be SAFE (masking ON, 
+  payloads OFF in PROD)
+
+Generate the complete spec.md now.
+
