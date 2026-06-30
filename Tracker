@@ -1,0 +1,137 @@
+Context: OpenShift Monitor Dashboard — Release Management Integration
+
+We have an existing internal OpenShift Monitor Dashboard built with 
+React/TypeScript frontend and Node.js backend. It currently monitors 
+OpenShift pods, detects log errors, shows container versions, calculates 
+success rates, and manages environment bookings.
+
+We want to add a new "Release Management" tab to this dashboard that 
+integrates with our BBOS Release Management Tracker on Confluence 
+(page ID: 4155436802 on confluence.barcapint.com).
+
+---
+
+WHAT THE CONFLUENCE PAGE CONTAINS:
+The Confluence page has 4 tabs:
+
+1. Release Tracker — Monthly release table with columns:
+   Month, Release Fix Version, Scope of Release, Components In-Scope 
+   (IDV/CSS/ODS checkboxes), Leads, Testing Completion (SIT/Release), 
+   TCR Signoff date, Walkthrough Session, CR Submit date, BLP Support 
+   Alignment, BLP Scope (LP), Go/No Go, BLP Scope (PROD)
+
+2. Month End Dates — Freeze windows per month:
+   Month, Start datetime, End datetime
+   (e.g. June: Start Mon 29 June 18:00, End Wed 01 July 12:00)
+
+3. CR-2026 — Change Request log with columns:
+   S.No, CR (CHG number), Details, Type, Environment, Outcome 
+   (SUCCESSFUL/CANCELLED/Not implemented), Date
+
+4. Minutes — Meeting notes with release decisions and action items
+
+---
+
+FEATURES WE WANT TO BUILD:
+
+1. Release Calendar Widget
+   - Show current month freeze window with live countdown
+   - Color coded: Green (open), Amber (<7 days to freeze), Red (frozen)
+
+2. Active Release Panel
+   - Current and next release details
+   - Scope items, component checklist (IDV/CSS/ODS), leads, key dates
+   - Go/No-Go status per release
+
+3. CR Tracker Board
+   - All CHG numbers displayed as filterable board
+   - Filter by: Environment (LP/PROD), Outcome, Month
+   - Search by CHG number or description
+
+4. Team Workload View
+   - Per team member: how many releases owned, upcoming deadlines
+   - Derived from Leads column in Release Tracker
+
+5. Meeting Minutes Action Tracker
+   - Parse minutes tab for action items
+   - Show owner, status (open/closed) per action per release
+
+6. One-Click Release Report
+   - Export PDF/CSV with CR outcomes, dates, leads summary
+   - Ready for stakeholder meetings
+
+7. Go/No-Go Checklist
+   - Per release checklist: Testing done, TCR Signoff, CR Submit, BLP
+   - Visual completion status
+
+8. Notifications/Alerts
+   - Freeze window warnings (7 days before, 1 day before)
+   - Upcoming deadline alerts for leads
+
+---
+
+CONSTRAINTS:
+- Dashboard does NOT have access to Production OpenShift pods
+- So no live pod deployment validation against CRs
+- All data comes from Confluence API only (read-only, no writes)
+- API token will be stored as environment variable, never hardcoded
+- All configuration (Confluence URL, page ID, refresh interval, 
+  column mappings) must be stored in a config file, not hardcoded
+- Refresh interval: configurable, default every 5 minutes
+
+---
+
+CURRENT STATUS:
+- Confluence API access is pending approval from senior/IT
+- We need to confirm: Personal Access Token creation allowed?
+- We need to confirm: Can dashboard make HTTP calls to Confluence 
+  from within OpenShift cluster?
+- Fallback if API blocked: Manual CSV upload from PM, 
+  dashboard parses and displays same features
+
+---
+
+TECH STACK:
+- Frontend: React + TypeScript
+- Backend: Node.js
+- Deployment: OpenShift cluster
+- Existing features: Pod monitoring, log error detection, 
+  container version tracking, success rate calculation, 
+  environment booking
+
+---
+
+WHAT WE NEED NEXT:
+
+Step 1: Confluence API layer (backend)
+   - Service to authenticate with Confluence using PAT
+   - Fetch and parse all 4 table tabs from page ID 4155436802
+   - Cache responses, configurable refresh interval
+   - Expose REST endpoints to frontend
+
+Step 2: Release Calendar + Freeze Countdown widget (frontend)
+
+Step 3: Active Release Panel (frontend)
+
+Step 4: CR Tracker Board with filters (frontend)
+
+Step 5: Team Workload View (frontend)
+
+Step 6: Minutes Action Tracker (frontend)
+
+Step 7: Export/Report generator
+
+Step 8: Notifications system
+
+---
+
+Please help me implement Step 1 first — the Confluence API 
+integration layer on the backend. The Confluence instance is 
+Data Center/Server type (not Cloud). Authentication uses 
+Personal Access Token (Bearer token). Base URL is 
+confluence.barcapint.com.
+How Your Manager Uses This
+Paste the entire prompt into their Claude session
+Claude will understand full context — existing system, constraints, what's built, what's next
+They can then ask Claude to build any specific step
+Each step builds on the previous — no rework needed
